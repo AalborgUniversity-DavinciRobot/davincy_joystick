@@ -41,36 +41,28 @@ int main(int argc, char **argv)
     int fd = open_port();
     configure_port(fd);
     vector<uint8_t> buffer;
-    vector<uint8_t> message;
     buffer.clear();
 
 
     while (ros::ok()) // Keep spinning loop until user presses Ctrl+C
     {
-    	//printf("Start\n");
-    	bool message_found = false;
-        //int fd = open_port();
-        //configure_port(fd);
         int bytes = 0;
         buffer.clear();
-        ioctl(fd, FIONREAD, &bytes);
-        //printf("Size fd: %d\n", bytes);
+        //ioctl(fd, FIONREAD, &bytes);
         tcflush(fd,TCIFLUSH);
         usleep(5000);	// 5 milliseconds  (18Bytes @ 1kHz -> 5*18=90 bytes per 5 ms)
 
         ioctl(fd, FIONREAD, &bytes);
-        printf("Size fd fluched: %d\n", bytes);
-
+        //printf("Size fd fluched: %d\n", bytes);
 
     	uint8_t this_byte;
-    	message.clear();
+
     	if (bytes>37){
 			for (int i=0;i<37;i++)
 			{
 				read(fd,&this_byte,1);
 				buffer.push_back(this_byte);
-				//printf("%02x\t",buffer[i]);
-			}//printf("\n");
+			}
 
 			for (int i=0;i<buffer.size();i++)
 			{
@@ -83,7 +75,6 @@ int main(int argc, char **argv)
 			}
 
     	}
-
 
     	uint8_t send_bytes[]={0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 00, 0xFF};
     	/* bytes send {Byte_1, Byte_2, Byte_3, Byte_4, Byte_5, Byte_6, Byte_7, Byte_8, Byte_9, Byte_10}
@@ -99,21 +90,21 @@ int main(int argc, char **argv)
     	 * Byte_10: Stop byte 0xFF (0b11111111)
     	 */
     	tcflush(fd,TCOFLUSH);	// Flush Output buffer before sending new data
-    	write(fd,send_bytes,NR_OF_BYTES_SEND);
-    	//close(fd);
+    	//write(fd,send_bytes,NR_OF_BYTES_SEND);
+
         //ros::spinOnce(); // Need to call this function often to allow ROS to process incoming messages
 
         rate.sleep(); // Sleep for the rest of the cycle, to enforce the loop rate
 
     }
     uint8_t send_bytes[]={0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF};
+    tcflush(fd,TCOFLUSH);
     write(fd,send_bytes,NR_OF_BYTES_SEND);
     return 0;
 }
 
 int open_port(void)
 {
-
 	const char *device = PORT;
 	int fd;
 	fd = open(device, O_RDWR | O_NOCTTY | O_NONBLOCK);
@@ -132,8 +123,7 @@ int open_port(void)
 		}
 		else
 		{
-			//fcntl(fd, F_SETFL, 0);
-			//printf("SUCCESFULL: /dev/ttyUSB0 port is open.\n");
+			printf("SUCCESFULL: /dev/ttyUSB0 port is open.\n");
 		}
 
 	return(fd);
@@ -144,31 +134,25 @@ int configure_port(int fd)
 
     tcgetattr(fd, &old_port_settings);
 
+    // port settings
     cfmakeraw(&new_port_settings);
     new_port_settings.c_cflag &= ~CSIZE;
     new_port_settings.c_cflag = BAUDRATE | CS8;
     new_port_settings.c_cflag |= (CLOCAL | CREAD);
     new_port_settings.c_cflag &= ~(PARENB | PARODD); // No parity
     new_port_settings.c_cflag &= ~CRTSCTS; // No hardware handshake
-    //new_port_settings.c_cflag &= ~CSTOPB; // 1 stopbit
+    new_port_settings.c_cflag &= ~CSTOPB; // 1 stopbit
     new_port_settings.c_iflag = IGNBRK;
     new_port_settings.c_iflag &= ~(IXON | IXOFF | IXANY); // No software handshake
     new_port_settings.c_lflag = 0;
     new_port_settings.c_oflag = 0;
-    new_port_settings.c_cc[VTIME] = 1;
-    new_port_settings.c_cc[VMIN] = 60;
-
-	//cfsetispeed(&port_settings, B230400);    // set baud rates
-	//cfsetospeed(&port_settings, B230400);
-
-	//port_settings.c_cflag = BAUDRATE | CS8 ;//| CLOCAL | CREAD; //| CRTSCTS
-
+    //new_port_settings.c_cc[VTIME] = 1;
+    //new_port_settings.c_cc[VMIN] = 60;
 
 	tcsetattr(fd, TCSANOW, &new_port_settings);    // apply the settings to the port
 	// TCSANOW:	The configuration is changed immediately
 
 	return(fd);
-
 }
 
 void process_block(int i,vector<uint8_t> message)
@@ -189,12 +173,15 @@ void process_block(int i,vector<uint8_t> message)
 double hex_to_dec(uint8_t MSB, uint8_t LSB)
 {
 	uint8_t tmp[2] = {MSB,LSB};
-	vector<uint8_t> binary;
+	uint8_t hex;
+	vector<bool> binary;
+	double dec = 0.0;
+
 	binary.clear();
 	for (int j=0;j<2;j++)
 	{
-		uint8_t hex = tmp[j];
-		int bin[8];
+		hex = tmp[j];
+		bool bin[8];
 		for(int i=0;i<8;i++)
 		{
 			bin[i]=hex%2;
@@ -206,7 +193,7 @@ double hex_to_dec(uint8_t MSB, uint8_t LSB)
 			binary.push_back(bin[top]);
 		}
 	}
-	double dec = 0;
+
 	for (int i=0;i<binary.size();i++)
 	{
 		dec += (double)binary[i]*pow(double(2),double(16-i-1));
