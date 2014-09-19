@@ -1,8 +1,6 @@
-// http://en.wikibooks.org/wiki/Serial_Programming/termios
-
 
 #include "ros/ros.h"
-#include "std_msgs/String.h"
+#include <sensor_msgs/JointState.h>
 #include <fcntl.h>
 #include <termios.h>
 #include <iostream>
@@ -16,7 +14,7 @@ using namespace std;
 // Defined constants
 #define PORT "/dev/ttyUSB0"			// connected port
 #define BAUDRATE B230400			// Baud rate = 230400 bits/s
-#define GEAR_RATIO_1 5.1			// Gear ratio motor 1
+#define GEAR_RATIO_1 5.1*2			// Gear ratio motor 1 only 256 steps, therefore *2
 #define GEAR_RATIO_2 19.0			// Gear ratio motor 2
 #define GEAR_RATIO_3 4.4			// Gear ratio motor 3
 #define GEAR_RATIO_4 19.0			// Gear ratio motor 4
@@ -29,23 +27,41 @@ vector<double> process_message(int i,vector<uint8_t> message);	// Returns 4 Curr
 double hex_to_dec(uint8_t MSB, uint8_t LSB);		// Converts the hex values into decimal numbers
 vector<double> initialize_position(int port, vector<uint8_t> buffer);
 double delta_position(double Theta_old,double Theta_new);
+void send_voltage(int port, int v1, int v2, int v3, int v4, int s1, int s2, int s3, int s4);
 
 int main(int argc, char **argv)
 {
-    ros::init(argc, argv, "joystick"); // Initiate new ROS node
+    ros::init(argc, argv, "joystick_publisher"); // Initiate new ROS node
 
-    ros::NodeHandle n("~");
-    //ros::Publisher chatter_pub = n.advertise<std_msgs::String>("chatter", 1000);
+    ros::NodeHandle n;
+    ros::Publisher joystick_pub = n.advertise<sensor_msgs::JointState>("davinci_joystick/joint_states",1);
     ros::Rate rate(1000);
 
+    sensor_msgs::JointState joystick;
+    joystick.name.resize(4);
+    joystick.position.resize(4);
+    joystick.effort.resize(4);
+    joystick.name[0] = "Motor_1";
+    joystick.name[1] = "Motor_2";
+    joystick.name[2] = "Motor_3";
+    joystick.name[3] = "Motor_4";
+
     int i1 = 0;
+    int s1 = 0;
     int i2 = 0;
+    int s2 = 0;
     int i3 = 0;
+    int s3 = 0;
     int i4 = 0;
-    n.getParam("i1",i1);
+    int s4 = 0;
+    /*n.getParam("i1",i1);
     n.getParam("i2",i2);
     n.getParam("i3",i3);
     n.getParam("i4",i4);
+    n.getParam("s1",s1);
+    n.getParam("s2",s2);
+    n.getParam("s3",s3);
+    n.getParam("s4",s4);*/
 
 
     int port = open_port();
@@ -102,35 +118,38 @@ int main(int argc, char **argv)
 				}
 			}
     	}
-    	printf("%1.4lf\t%1.4lf\t%1.4lf\t%1.4lf\t\n",data[0],data[2],data[4],data[6]);
-    	printf("%4.2lf\t%4.2lf\t%4.2lf\t%4.2lf\t\n",(Theta1-data_init[1])/GEAR_RATIO_1,(Theta2-data_init[3])/GEAR_RATIO_2,(Theta3-data_init[5])/GEAR_RATIO_3,(Theta4-data_init[7])/GEAR_RATIO_4);
+
+    	double I1 = data[0]-data_init[0];
+    	double I2 = data[2]-data_init[2];
+    	double I3 = data[4]-data_init[4];
+    	double I4 = data[6]-data_init[6];
+    	if (dTheta1<0.0) { I1 *= -1;}
+    	if (dTheta2<0.0) { I2 *= -1;}
+    	if (dTheta3<0.0) { I3 *= -1;}
+    	if (dTheta4<0.0) { I4 *= -1;}
+    	double total_I = I1+I2+I3+I4;
+
     	data_old = data;
-    	printf("\n");
 
-    	uint8_t send_bytes[]={0x00, 0x00, i1, 0x00, i2, 0x00, i3, 0x00, i4, 0xFF};
-    		/* bytes send {Byte_1, Byte_2, Byte_3, Byte_4, Byte_5, Byte_6, Byte_7, Byte_8, Byte_9, Byte_10}
-    		 * Byte_1: Start byte 0x00 (0b00000000)
-    		 * Byte_2: Sign of Current motor 1; MSB = 0 Clamp, MSB = 1 Open
-    		 * Byte_3: Amplitude of Current motor 1
-    		 * Byte_4: Sign of Current motor 2: MSB = 0 Right->Left, MSB = 1 Left->Right
-    		 * Byte_5: Amplitude of Current motor 2
-    		 * Byte_6: Sign of Current motor 3: MSB = 0 Anti-clockwise, MSB = 1 Clockwise
-    		 * Byte_7: Amplitude of Current motor 3
-    		 * Byte_8: Sign of Current motor 4: MSB = 0 Down, MSB = 1 Up
-    		 * Byte_9: Amplitude of Current motor 4
-    		 * Byte_10: Stop byte 0xFF (0b11111111)
-    		 */
-    		tcflush(port,TCOFLUSH);	// Flush Output buffer before sending new data
-    		write(port,send_bytes,10);
+    	send_voltage(port,i1,i2,i3,i4,s1,s2,s3,s4);
 
-        //ros::spinOnce(); // Need to call this function often to allow ROS to process incoming messages
+    	joystick.header.stamp = ros::Time::now();
+    	joystick.position[0]= (Theta1-data_init[1])/GEAR_RATIO_1;
+    	joystick.position[1]= (Theta2-data_init[3])/GEAR_RATIO_2;
+    	joystick.position[2]= (Theta3-data_init[5])/GEAR_RATIO_3;
+    	joystick.position[3]= (Theta4-data_init[7])/GEAR_RATIO_4;
+    	joystick.effort[0]=I1;
+    	joystick.effort[1]=I2;
+    	joystick.effort[2]=I3;
+    	joystick.effort[3]=I4;
+    	joystick_pub.publish(joystick);
+
+        ros::spinOnce(); // Need to call this function often to allow ROS to process incoming messages
 
         rate.sleep(); // Sleep for the rest of the cycle, to enforce the loop rate
 
     }
-    uint8_t send_bytes[]={0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF};
-    tcflush(port,TCOFLUSH);
-    write(port,send_bytes,10);
+    send_voltage(port,0,0,0,0,0,0,0,0);
     return 0;
 }
 
@@ -155,13 +174,12 @@ int open_port(void)
 
 	if(port == -1) // Port cannot be opened
 		{
-			printf("ERROR: Unable to open /dev/ttyUSB0. \n");
+			ROS_INFO("ERROR: Unable to open /dev/ttyUSB0. \n");
 		}
 		else
 		{
-			printf("SUCCESFULL: /dev/ttyUSB0 port is open.\n");
+			ROS_INFO("SUCCESFULL: /dev/ttyUSB0 port is open.\n");
 		}
-
 	return(port);
 }
 
@@ -204,17 +222,18 @@ vector<double> process_message(int i,vector<uint8_t> message)
 	 * which can be interpreted in a better way
 	 *
 	 */
-	double bit_to_I = 5.0/4095.0; //Bit to Current mapping
+	double bit_to_I = 2.0/4095.0; //Bit to Current mapping
+	double bit_to_degree = 360/2047.0;
 
 	vector<double> measurements;
 	measurements.push_back(hex_to_dec(message[i+1],message[i+2])*bit_to_I);
-	measurements.push_back(hex_to_dec(message[i+3],message[i+4])*360/2048);
+	measurements.push_back(hex_to_dec(message[i+3],message[i+4])*bit_to_degree);
 	measurements.push_back(hex_to_dec(message[i+5],message[i+6])*bit_to_I);
-	measurements.push_back(hex_to_dec(message[i+7],message[i+8])*360/2048);
+	measurements.push_back(hex_to_dec(message[i+7],message[i+8])*bit_to_degree);
 	measurements.push_back(hex_to_dec(message[i+9],message[i+10])*bit_to_I);
-	measurements.push_back(hex_to_dec(message[i+11],message[i+12])*360/2048);
+	measurements.push_back(hex_to_dec(message[i+11],message[i+12])*bit_to_degree);
 	measurements.push_back(hex_to_dec(message[i+13],message[i+14])*bit_to_I);
-	measurements.push_back(hex_to_dec(message[i+15],message[i+16])*360/2048);
+	measurements.push_back(hex_to_dec(message[i+15],message[i+16])*bit_to_degree);
 	return measurements;
 }
 
@@ -283,7 +302,7 @@ vector<double> initialize_position(int port, vector<uint8_t> buffer)
 				{
 					measurements = process_message(i+1, buffer);
 					init_complete = true;
-					printf("INITIALIZING COMPLETE\n");
+					ROS_INFO("INITIALIZING COMPLETE\n");
 				}
 
 			}
@@ -309,4 +328,23 @@ double delta_position(double Theta_old,double Theta_new)
 			dTheta = Theta_new-Theta_old;
 		}
 	return dTheta;
+}
+
+void send_voltage(int port, int v1, int v2, int v3, int v4, int s1, int s2, int s3, int s4)
+{
+	uint8_t send_bytes[]={0x00, s1, v1, s2, v2, s3, v3, s4, v4, 0xFF};
+		/* bytes send {Byte_1, Byte_2, Byte_3, Byte_4, Byte_5, Byte_6, Byte_7, Byte_8, Byte_9, Byte_10}
+		 * Byte_1: Start byte 0x00 (0b00000000)
+		 * Byte_2: Sign of Current motor 1; MSB = 0 Clamp, MSB = 1 Open
+		 * Byte_3: Amplitude of Current motor 1
+		 * Byte_4: Sign of Current motor 2: MSB = 0 Right->Left, MSB = 1 Left->Right
+		 * Byte_5: Amplitude of Current motor 2
+		 * Byte_6: Sign of Current motor 3: MSB = 0 Anti-clockwise, MSB = 1 Clockwise
+		 * Byte_7: Amplitude of Current motor 3
+		 * Byte_8: Sign of Current motor 4: MSB = 0 Down, MSB = 1 Up
+		 * Byte_9: Amplitude of Current motor 4
+		 * Byte_10: Stop byte 0xFF (0b11111111)
+		 */
+		tcflush(port,TCOFLUSH);	// Flush Output buffer before sending new data
+		write(port,send_bytes,10);
 }
