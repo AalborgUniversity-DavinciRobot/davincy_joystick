@@ -54,15 +54,6 @@ int main(int argc, char **argv)
     int s3 = 0;
     int i4 = 0;
     int s4 = 0;
-    /*n.getParam("i1",i1);
-    n.getParam("i2",i2);
-    n.getParam("i3",i3);
-    n.getParam("i4",i4);
-    n.getParam("s1",s1);
-    n.getParam("s2",s2);
-    n.getParam("s3",s3);
-    n.getParam("s4",s4);*/
-
 
     int port = open_port();
     configure_port(port);
@@ -92,7 +83,6 @@ int main(int argc, char **argv)
         usleep(5000);	// 5 milliseconds  (18Bytes @ 1kHz -> 5*18=90 bytes per 5 ms)
 
         ioctl(port, FIONREAD, &bytes);	// get number of bytes available at port and store in bytes
-        //printf("Size port flushed: %d\n", bytes);
 
     	if (bytes>37)
     	{
@@ -131,7 +121,7 @@ int main(int argc, char **argv)
 
     	data_old = data;
 
-    	send_voltage(port,i1,i2,i3,i4,s1,s2,s3,s4);
+    	send_voltage(port,s1,i1,s2,i2,s3,i3,s4,i4);
 
     	joystick.header.stamp = ros::Time::now();
     	joystick.position[0]= (Theta1-data_init[1])/GEAR_RATIO_1;
@@ -275,6 +265,19 @@ double hex_to_dec(uint8_t MSB, uint8_t LSB)
 vector<double> initialize_position(int port, vector<uint8_t> buffer)
 {
 	bool init_complete = false;
+	bool init_m1 = false;
+	bool init_m2 = false;
+	bool init_m4 = false;
+	double I_to_bit =255.0/2.0;
+	int range = 2.0;
+    int i1 = 0;
+    int s1 = 0;
+    double i2 = 0;
+    int s2 = 0;
+    double i3 = 0;
+    int s3 = 0;
+    double i4 = 0;
+    int s4 = 0;
 	int bytes = 0;
 	vector<double> measurements;
 
@@ -301,13 +304,46 @@ vector<double> initialize_position(int port, vector<uint8_t> buffer)
 				if(buffer[i]==255 && buffer[i+1]==0 && buffer[i+2]<16 && buffer[i+18]==255 && buffer[i+19]==0)
 				{
 					measurements = process_message(i+1, buffer);
-					init_complete = true;
-					ROS_INFO("INITIALIZING COMPLETE\n");
+
+					if(measurements[1]>163.0)
+					{ 	init_m1 = true; i1 = 0;}
+					else
+					{	i1 = 1; s1 = 1; init_m1=false;}
+
+					if(measurements[7]<range || 360.0-measurements[7]<range)
+					{	init_m4 = true;	i4=0;}
+					else if (measurements[7]<180.0)
+					{	i4 =measurements[7]/120.0+0.1; s4 = 0;	init_m4 = false;}
+					else
+					{	i4 =measurements[7]/120.0+0.1;
+						s4 = 1;
+						init_m4 = false;
+					}
+
+					if(measurements[3]<range || 360.0-measurements[3]<range)
+					{
+						init_m2 = true;
+						i2=0;
+					}
+					else if (measurements[3]<180.0)
+					{
+						i2=measurements[3]/100.0+0.1;
+						s2 = 0;
+						init_m2 = false;}
+					else
+					{
+						i2=(360-measurements[3])/100.0+0.1;
+						s2=1;
+						init_m2 = false;}
+
+					send_voltage(port,s1*255,i1*80,s2*255,I_to_bit*i2,0,0,s4*255,I_to_bit*i4);
+					init_complete =init_m1*init_m2*init_m4;
 				}
 
 			}
 		}
 	}
+	ROS_INFO("INITIALIZING COMPLETE\n");
 	return measurements;
 }
 
@@ -330,7 +366,7 @@ double delta_position(double Theta_old,double Theta_new)
 	return dTheta;
 }
 
-void send_voltage(int port, int v1, int v2, int v3, int v4, int s1, int s2, int s3, int s4)
+void send_voltage(int port, int s1, int v1, int s2, int v2, int s3, int v3, int s4, int v4)
 {
 	uint8_t send_bytes[]={0x00, s1, v1, s2, v2, s3, v3, s4, v4, 0xFF};
 		/* bytes send {Byte_1, Byte_2, Byte_3, Byte_4, Byte_5, Byte_6, Byte_7, Byte_8, Byte_9, Byte_10}
