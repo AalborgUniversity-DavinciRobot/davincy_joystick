@@ -15,9 +15,12 @@ using namespace std;
 #define PORT "/dev/ttyUSB0"			// connected port
 #define BAUDRATE B230400			// Baud rate = 230400 bits/s
 #define GEAR_RATIO_1 5.1*2			// Gear ratio motor 1 only 256 steps, therefore *2
+#define IMAX_1 1.0
 #define GEAR_RATIO_2 19.0			// Gear ratio motor 2
+#define IMAX_2 1.6
 #define GEAR_RATIO_3 4.4			// Gear ratio motor 3
 #define GEAR_RATIO_4 19.0			// Gear ratio motor 4
+#define IMAX_4 1.7
 
 
 // Functions used
@@ -35,33 +38,27 @@ int main(int argc, char **argv)
 
     ros::NodeHandle n;
     ros::Publisher joystick_pub = n.advertise<sensor_msgs::JointState>("davinci_joystick/joint_states",1);
-    ros::Rate rate(1000);
+    ros::Rate rate(100);
 
     sensor_msgs::JointState joystick;
     joystick.name.resize(4);
     joystick.position.resize(4);
+    joystick.velocity.resize(4);
     joystick.effort.resize(4);
     joystick.name[0] = "Motor_1";
     joystick.name[1] = "Motor_2";
     joystick.name[2] = "Motor_3";
     joystick.name[3] = "Motor_4";
 
-    int i1 = 0;
-    int s1 = 0;
-    int i2 = 0;
-    int s2 = 0;
-    int i3 = 0;
-    int s3 = 0;
-    int i4 = 0;
-    int s4 = 0;
-
     int port = open_port();
     configure_port(port);
     vector<uint8_t> buffer;
     buffer.clear();
 
+    double I_to_bit =255.0/3.0;
     vector<double> data_init;
     data_init=initialize_position(port,buffer);
+    sleep(3);
     vector<double> data_old = data_init;
     vector<double> data;
     double Theta1 = data_init[1];
@@ -73,6 +70,17 @@ int main(int argc, char **argv)
     double dTheta3 = 0.0;
     double dTheta4 = 0.0;
 
+    double i1 = 0.0;
+    int s1 = 0.0;
+    double i2 = 0;
+    int s2 = 0;
+    double i3 = 0;
+    int s3 = 0;
+    double i4 = 0;
+    int s4 = 0;
+
+    int cnt = 0.0;
+
     while (ros::ok()) // Keep spinning loop until user presses Ctrl+C
     {
 
@@ -80,7 +88,7 @@ int main(int argc, char **argv)
         uint8_t this_byte;
         buffer.clear();
         tcflush(port,TCIFLUSH);
-        usleep(5000);	// 5 milliseconds  (18Bytes @ 1kHz -> 5*18=90 bytes per 5 ms)
+        usleep(7000);	// 5 milliseconds  (18Bytes @ 1kHz -> 5*18=90 bytes per 5 ms)
 
         ioctl(port, FIONREAD, &bytes);	// get number of bytes available at port and store in bytes
 
@@ -109,25 +117,49 @@ int main(int argc, char **argv)
 			}
     	}
 
-    	double I1 = data[0]-data_init[0];
-    	double I2 = data[2]-data_init[2];
-    	double I3 = data[4]-data_init[4];
-    	double I4 = data[6]-data_init[6];
-    	if (dTheta1<0.0) { I1 *= -1;}
-    	if (dTheta2<0.0) { I2 *= -1;}
-    	if (dTheta3<0.0) { I3 *= -1;}
-    	if (dTheta4<0.0) { I4 *= -1;}
+    	double I1 = data[0];
+    	double I2 = data[2];
+    	double I3 = data[4];
+    	double I4 = data[6];
+    	//if (dTheta1<0.0) { I1 *= -1;}
+    	//if (dTheta2<0.0) { I2 *= -1;}
+    	//if (dTheta3<0.0) { I3 *= -1;}
+    	//if (dTheta4<0.0) { I4 *= -1;}
     	double total_I = I1+I2+I3+I4;
 
     	data_old = data;
 
-    	send_voltage(port,s1,i1,s2,i2,s3,i3,s4,i4);
+    	/*if (cnt==100)
+    	{
+    		i1+=2.0/10;
+    		cnt = 0.0;
+    	}
+    	if (i1>2.1)
+    	{
+    		i1 = 0.0;
+    	}*/
 
+    	i4 = cnt/1000.0*IMAX_4;
+    	if (cnt==1000)
+    	{
+    		cnt=0;
+    	}
+
+
+    	printf("%d\t%lf\t%lf\n",cnt,I4,i4);
+    	send_voltage(port,s1*255,i1*255.0/IMAX_1,s2*255,i2*255.0/IMAX_2,0,0,s4*255,i4*255.0/IMAX_4);
+
+
+    	cnt++;
     	joystick.header.stamp = ros::Time::now();
     	joystick.position[0]= (Theta1-data_init[1])/GEAR_RATIO_1;
     	joystick.position[1]= (Theta2-data_init[3])/GEAR_RATIO_2;
     	joystick.position[2]= (Theta3-data_init[5])/GEAR_RATIO_3;
     	joystick.position[3]= (Theta4-data_init[7])/GEAR_RATIO_4;
+    	joystick.velocity[0]=i1;
+    	joystick.velocity[1]=i2;
+    	joystick.velocity[2]=i3;
+    	joystick.velocity[3]=i4;
     	joystick.effort[0]=I1;
     	joystick.effort[1]=I2;
     	joystick.effort[2]=I3;
@@ -270,7 +302,7 @@ vector<double> initialize_position(int port, vector<uint8_t> buffer)
 	bool init_m4 = false;
 	double I_to_bit =255.0/2.0;
 	int range = 2.0;
-    int i1 = 0;
+    double i1 = 0;
     int s1 = 0;
     double i2 = 0;
     int s2 = 0;
@@ -305,17 +337,21 @@ vector<double> initialize_position(int port, vector<uint8_t> buffer)
 				{
 					measurements = process_message(i+1, buffer);
 
-					if(measurements[1]>163.0)
+					if(measurements[1]<range || 360.0-measurements[1]<range)
 					{ 	init_m1 = true; i1 = 0;}
+					else if (measurements[1]<180)
+					{
+						i1 = 0.5; s1 = 0; init_m1=false;
+					}
 					else
-					{	i1 = 1; s1 = 1; init_m1=false;}
+					{	i1 = 0.5; s1 = 1; init_m1=false;}
 
 					if(measurements[7]<range || 360.0-measurements[7]<range)
 					{	init_m4 = true;	i4=0;}
 					else if (measurements[7]<180.0)
-					{	i4 =measurements[7]/120.0+0.1; s4 = 0;	init_m4 = false;}
+					{	i4 =measurements[7]/100.0+0.5; s4 = 0;	init_m4 = false;}
 					else
-					{	i4 =measurements[7]/120.0+0.1;
+					{	i4 =measurements[7]/100.0+0.5;
 						s4 = 1;
 						init_m4 = false;
 					}
@@ -336,14 +372,15 @@ vector<double> initialize_position(int port, vector<uint8_t> buffer)
 						s2=1;
 						init_m2 = false;}
 
-					send_voltage(port,s1*255,i1*80,s2*255,I_to_bit*i2,0,0,s4*255,I_to_bit*i4);
+					send_voltage(port,s1*255,I_to_bit*i1,s2*255,I_to_bit*i2,0,0,s4*255,I_to_bit*i4);
 					init_complete =init_m1*init_m2*init_m4;
+					//printf("POSITIONS:\t%3.2lf\t%2.2lf\t%3.2lf\n",measurements[1],measurements[3],measurements[7]);
 				}
-
 			}
 		}
 	}
-	ROS_INFO("INITIALIZING COMPLETE\n");
+	ROS_INFO("INITIALIZING COMPLETE\nINIT POSITIONS:\t%3.2lf\t%2.2lf\t%3.2lf\n",measurements[1],measurements[3],measurements[7]);
+
 	return measurements;
 }
 
@@ -384,3 +421,4 @@ void send_voltage(int port, int s1, int v1, int s2, int v2, int s3, int v3, int 
 		tcflush(port,TCOFLUSH);	// Flush Output buffer before sending new data
 		write(port,send_bytes,10);
 }
+
