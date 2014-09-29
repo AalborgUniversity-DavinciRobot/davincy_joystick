@@ -103,7 +103,7 @@ include_directories(
 # )
 
 ## Declare a cpp executable
-add_executable(joystick_measurement src/joystick_measurement.cpp)
+#add_executable(joystick_measurement src/joystick_measurement.cpp)
 add_executable(davinci_joystick src/davinci_joystick.cpp)
 add_executable(joystick_simulation src/joystick_simulation.cpp)
 
@@ -112,7 +112,7 @@ add_executable(joystick_simulation src/joystick_simulation.cpp)
 # add_dependencies(davinci_joystick_node davinci_joystick_generate_messages_cpp)
 
 ## Specify libraries to link a library or executable target against
-target_link_libraries(joystick_measurement ${catkin_LIBRARIES})
+#target_link_libraries(joystick_measurement ${catkin_LIBRARIES})
 target_link_libraries(davinci_joystick ${catkin_LIBRARIES})
 target_link_libraries(joystick_simulation ${catkin_LIBRARIES})
 

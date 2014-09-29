@@ -23,7 +23,7 @@ using namespace std;
 #define GEAR_RATIO_4 19.0			// Gear ratio motor 4
 #define OFFSET 0.06
 
-#define IMAX_1 1.00					// Max current when sended 0xFF, continuous
+#define IMAX_1 1.0					// Max current when sended 0xFF, continuous
 #define IMAXC_1 0.32				// Max continous current according to datasheet
 #define PMAX_1 3.0					// Power rating
 #define IMAX_2 1.6					// Max current when sended 0xFF, continuous
@@ -132,7 +132,7 @@ bool Message::check_buffer(void)
 {
 	int bytes;
 	tcflush(port,TCIFLUSH);
-	usleep(5000);	// 5 milliseconds  (18Bytes @ 1kHz -> 5*18=90 bytes per 5 ms)
+	usleep(8000);	// 5 milliseconds  (18Bytes @ 1kHz -> 5*18=90 bytes per 5 ms)
 	ioctl(port, FIONREAD, &bytes);	// get number of bytes available at port and store in bytes
 	if (bytes > 37)
 	{
@@ -169,7 +169,7 @@ void Message::get_message(void)
 	}
 	else
 	{
-		ROS_INFO("NOT ENOUGh BYTES AVAILABLE AT PORT\n");
+		//ROS_INFO("NOT ENOUGH BYTES AVAILABLE AT PORT\n");
 		//message.clear();
 	}
 }
@@ -247,13 +247,13 @@ void Message::send_message(vector<double> I_sp)
 	 * 			I_i		->	Amplitude of current (0,IMAX_i)
 	 */
 	int S1,S2,S3,S4;
-	if (I_sp[0]<0.0) {S1=0;}
+	if (I_sp[0]<0.0) {S1=1;}
 	else {S1=1;}
-	if (I_sp[1]<0.0) {S2=0;}
+	if (I_sp[1]<0.0) {S2=1;}
 	else {S2=1;}
-	if (I_sp[2]<0.0) {S3=0;}
+	if (I_sp[2]<0.0) {S3=1;}
 	else {S3=1;}
-	if (I_sp[3]<0.0) {S4=0;}
+	if (I_sp[3]<0.0) {S4=1;}
 	else {S4=1;}
 
 
@@ -291,9 +291,14 @@ public:
 	void current_setpoint(double i1,double i2, double i3, double i4);
 
 	void create_joint_state_msg(void);
+	void callibration(Message msg);
 
 
 private:
+	double I1_par[2];
+	double I2_par[2];
+	double I3_par[2];
+	double I4_par[2];
 	void limit_current(void);
 	double delta_position(double Theta_old, double Theta_new);
 
@@ -301,16 +306,16 @@ private:
 void Joystick::limit_current(void)
 {
 	if (I_setpoint[0] >IMAX_1)
-	{ I1 = IMAX_1; }
+	{ I_setpoint[0] = IMAX_1; }
 
 	if (I_setpoint[1] >IMAX_2)
-	{ I2 = IMAX_2; }
+	{ I_setpoint[1] = IMAX_2; }
 
 	if (I_setpoint[2] >IMAX_3)
-	{ I3 = IMAX_3; }
+	{ I_setpoint[2] = IMAX_3; }
 
 	if (I_setpoint[3] >IMAX_4)
-	{ I4 = IMAX_4; }
+	{ I_setpoint[3] = IMAX_4; }
 }
 void Joystick::create_joint_state_msg(void)
 {
@@ -371,7 +376,7 @@ void Joystick::update_position(vector<double> Theta_old, vector<double> Theta_ne
 void Joystick::current_setpoint(double i1,double i2, double i3, double i4)
 {
 	I_setpoint.clear();
-	I_setpoint.push_back(i1);
+	I_setpoint.push_back((i1));
 	I_setpoint.push_back(i2);
 	I_setpoint.push_back(i3);
 	I_setpoint.push_back(i4);
@@ -380,10 +385,85 @@ void Joystick::current_setpoint(double i1,double i2, double i3, double i4)
 }
 void Joystick::update_current(vector<double> I)
 {
-	I1=I[0];
-	I2=I[1];
-	I3=I[2];
-	I4=I[3];
+	I1=(I[0]-I1_par[1])/I1_par[0];
+	I2=(I[1]-I2_par[1])/I2_par[0];
+	I3=(I[2]-I3_par[1])/I3_par[0];
+	I4=(I[3]-I4_par[1])/I4_par[0];
+}
+void Joystick::callibration(Message msg)
+{
+	I1_par[0]=1.0;
+	I1_par[1]=0.0;
+	I2_par[0]=1.0;
+	I2_par[1]=0.0;
+	I3_par[0]=1.0;
+	I3_par[1]=0.0;
+	I4_par[0]=1.0;
+	I4_par[1]=0.0;
+
+	for(int joint=1;joint<5;joint++)
+	{
+		ROS_INFO("Callibrating joint %d\n",joint);
+	vector<double> x;
+	vector<double> y;
+	double SumX=0;
+	double SumY=0;
+	double SumXY=0;
+	double SumXX=0;
+	double mean_x,mean_y;
+	double cnt = 0;
+	double slope =0;
+	double offset =0;
+	int tries = 5;
+	int steps = 20;
+	x.clear();
+	y.clear();
+	for (int j=0; j<tries;j++)
+	       	{
+
+				for (cnt = 0;cnt<steps;cnt++)
+				{
+					double i_ = cnt*0.05;
+					if (joint==1){ current_setpoint(i_,0,0,0);}
+					else if (joint==2){ current_setpoint(0,i_,0,0);}
+					//else if (joint==3){ current_setpoint(0,0,i_,0);}
+					else if (joint==4){ current_setpoint(0,0,0,i_);}
+					//else {ROS_INFO("WRONG JOINT NUMBER!!\n");}
+					msg.send_message(I_setpoint);
+					usleep(50000);
+					msg.get_message();
+					update_current(msg.current);
+
+					if (i_>0.1 && i_<=0.7)
+					{
+						x.push_back(i_);
+						y.push_back(msg.current[joint-1]);
+					}
+				}
+
+				for(int i=0;i<x.size();i++)
+				{
+					SumX +=x[i];
+					SumY +=y[i];
+					SumXX += x[i]*x[i];
+					SumXY += x[i]*y[i];
+				}
+				mean_x = SumX/x.size();
+				mean_y = SumY/y.size();
+
+				slope = (SumXY-SumX*mean_y)/(SumXX - SumX*mean_x);
+				offset = (mean_y - slope*mean_x);
+
+				current_setpoint(0,0,0,0);
+				msg.send_message(I_setpoint);
+				sleep(1);
+	       	}
+	       	printf("%lf\t%lf\n",slope,offset);
+	       	if(joint==1){I1_par[0]=slope;I1_par[1]=offset;}
+	       	else if(joint==2){I2_par[0]=slope;I2_par[1]=offset;}
+	       	else if(joint==3){I3_par[0]=slope;I3_par[1]=offset;}
+	       	else if(joint==4){I4_par[0]=slope;I4_par[1]=offset;}
+	}
 }
 
 int main(int argc, char **argv)
@@ -418,19 +498,25 @@ int main(int argc, char **argv)
     msg_init.print_message(msg_init.position);
     msg_old = msg_init;
 
+   	davinci_joystick.callibration(msg);
+    sleep(2);
 
     while (ros::ok()) // Keep spinning loop until user presses Ctrl+C
     {
+    	//davinci_joystick.callibration(msg);
+    	davinci_joystick.current_setpoint(0.2,0.2,0.0,0.2);
+    	msg.send_message(davinci_joystick.I_setpoint);
+    	//usleep(10000);
+
     	msg.get_message();
     	if (msg.msg_found)
     	{
     		davinci_joystick.update_position(msg_old.position,msg.position);
     		davinci_joystick.update_current(msg.current);
     	}
-    	davinci_joystick.current_setpoint(0.0,0.3,0,0);
 
     	davinci_joystick.create_joint_state_msg();
-    	msg.send_message(davinci_joystick.I_setpoint);
+
     	joystick_pub.publish(davinci_joystick.joint_states);
 
     	msg_old = msg;
