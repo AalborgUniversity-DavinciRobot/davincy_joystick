@@ -104,6 +104,8 @@ include_directories(
 
 ## Declare a cpp executable
 add_executable(joystick_measurement src/joystick_measurement.cpp)
+add_executable(davinci_joystick src/davinci_joystick.cpp)
+add_executable(joystick_simulation src/joystick_simulation.cpp)
 
 ## Add cmake target dependencies of the executable/library
 ## as an example, message headers may need to be generated before nodes
@@ -111,6 +113,8 @@ add_executable(joystick_measurement src/joystick_measurement.cpp)
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(joystick_measurement ${catkin_LIBRARIES})
+target_link_libraries(davinci_joystick ${catkin_LIBRARIES})
+target_link_libraries(joystick_simulation ${catkin_LIBRARIES})
 
 #############
 ## Install ##
