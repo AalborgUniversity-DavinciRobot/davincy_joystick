@@ -1,6 +1,7 @@
 
 #include "ros/ros.h"
 #include <sensor_msgs/JointState.h>
+#include <std_msgs/Float64.h>
 #include <fcntl.h>
 #include <termios.h>
 #include <iostream>
@@ -488,7 +489,16 @@ int main(int argc, char **argv)
     ros::init(argc, argv, "joystick_get_state");
     ros::NodeHandle n;
     ros::Publisher joystick_pub = n.advertise<sensor_msgs::JointState>("davinci_joystick/joint_states",1);
+    ros::Publisher instr_roll_pub = n.advertise<std_msgs::Float64>("/davinci/p4_instrument_roll_controller/command",1);
+    ros::Publisher instr_pitch_pub = n.advertise<std_msgs::Float64>("/davinci/p4_instrument_pitch_controller/command",1);
+    ros::Publisher instr_yawl_pub = n.advertise<std_msgs::Float64>("/davinci/p4_instrument_jaw_left_controller/command",1);
+    ros::Publisher instr_yawr_pub = n.advertise<std_msgs::Float64>("/davinci/p4_instrument_jaw_right_controller/command",1);
     ros::Rate rate(FREQ);
+
+	std_msgs::Float64 roll_setpoint;
+	std_msgs::Float64 pitch_setpoint;
+	std_msgs::Float64 jaw_left_setpoint;
+	std_msgs::Float64 jaw_right_setpoint;
 
     Port serial_port;
     serial_port.open_port();
@@ -517,7 +527,7 @@ int main(int argc, char **argv)
 
     while (ros::ok()) // Keep spinning loop until user presses Ctrl+C
     {
-    	davinci_joystick.current_setpoint(0.1,0.2,0.0,0.2);
+    	davinci_joystick.current_setpoint(0.0,0.0,0.0,0.0);
     	msg.send_message(davinci_joystick.I_setpoint);
 
     	msg.get_message();
@@ -528,8 +538,20 @@ int main(int argc, char **argv)
     	}
 
     	davinci_joystick.create_joint_state_msg();
-    	joystick_pub.publish(davinci_joystick.joint_states);
 
+
+	jaw_left_setpoint.data = -davinci_joystick.joint_states.position[0] + davinci_joystick.joint_states.position[1];
+	jaw_right_setpoint.data = -davinci_joystick.joint_states.position[0] - davinci_joystick.joint_states.position[1];
+
+	roll_setpoint.data = 0;//davinci_joystick.joint_states.position[1];
+	pitch_setpoint.data =davinci_joystick.joint_states.position[3];
+    	
+	instr_yawl_pub.publish(jaw_left_setpoint);
+	instr_yawr_pub.publish(jaw_right_setpoint);
+	instr_roll_pub.publish(roll_setpoint);
+	instr_pitch_pub.publish(pitch_setpoint);
+
+    	joystick_pub.publish(davinci_joystick.joint_states);
     	msg_old = msg;
 
         ros::spinOnce(); // Need to call this function often to allow ROS to process incoming messages
