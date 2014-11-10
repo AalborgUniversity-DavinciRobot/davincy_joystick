@@ -18,7 +18,7 @@ using namespace std;
 // Define constants
 #define PORT "/dev/ttyUSB0"			// connected port
 #define BAUDRATE B230400			// Baud rate = 230400 bits/s
-#define FREQ 1000					// Frequency at which node is running
+#define FREQ 100					// Frequency at which node is running
 #define M_PI 3.14159265358979323846	// PI
 #define GEAR_RATIO_1 5.1*2			// Gear ratio motor 1 only 256 steps, therefore *2
 #define GEAR_RATIO_2 19.0			// Gear ratio motor 2
@@ -172,7 +172,7 @@ void Message::get_message(void)
 	}
 	else
 	{
-		//ROS_INFO("NOT ENOUGH BYTES AVAILABLE AT PORT\n");
+		ROS_INFO("NOT ENOUGH BYTES AVAILABLE AT PORT\n");
 		//message.clear();
 	}
 }
@@ -260,7 +260,8 @@ void Message::send_message(vector<double> I_sp)
 	else {S4=1;}
 
 
-	uint8_t message[]={0x00, S1*255, I_sp[0]*255.0/IMAX_1, S2*255, I_sp[1]*255.0/IMAX_2, S3*255, I_sp[2]*255.0/IMAX_3, S4*255, I_sp[3]*255.0/IMAX_4, 0xFF};
+	//uint8_t message[]={0x00, S1*255, I_sp[0]*255.0/IMAX_1, S2*255, I_sp[1]*255.0/IMAX_2, S3*255, I_sp[2]*255.0/IMAX_3, S4*255, I_sp[3]*255.0/IMAX_4, 0xFF};
+uint8_t message[]={0x00, S1*255, 0, S2*255, 0, S3*255, 0, S4*255, 0, 0xFF};
 		/* bytes send {Byte_1, Byte_2, Byte_3, Byte_4, Byte_5, Byte_6, Byte_7, Byte_8, Byte_9, Byte_10}
 		 * Byte_1: Start byte 0x00 (0b00000000)
 		 * Byte_2: Sign of Current motor 1; MSB = 0 Clamp, MSB = 1 Open
@@ -443,7 +444,7 @@ void Joystick::callibration(Message msg)
 
 				if (joint==1){ current_setpoint(i_,0,0,0);}
 				else if (joint==2){ current_setpoint(0,i_,0,0);}
-				//else if (joint==3){ current_setpoint(0,0,i_,0);}
+				else if (joint==3){ current_setpoint(0,0,i_,0);}
 				else if (joint==4){ current_setpoint(0,0,0,i_);}
 				msg.send_message(I_setpoint);
 				usleep(50000);
@@ -514,15 +515,17 @@ int main(int argc, char **argv)
     msg_init.port=serial_port.port_handle;
 
     Joystick davinci_joystick;
-
+	int o = 0;
     while (!msg_init.msg_found)
     {
     	msg_init.get_message();
+	ROS_INFO("GETTING INITIAL MESSAGE\n");
     }
     msg_init.print_message(msg_init.position);
+msg_init.print_message(msg_init.current);
     msg_old = msg_init;
 
-   	davinci_joystick.callibration(msg);
+   	//davinci_joystick.callibration(msg);
     sleep(2);
 
     while (ros::ok()) // Keep spinning loop until user presses Ctrl+C
@@ -538,14 +541,64 @@ int main(int argc, char **argv)
     	}
 
     	davinci_joystick.create_joint_state_msg();
+	
+	
+
+	if (davinci_joystick.joint_states.position[2]>2.5)
+	{
+		roll_setpoint.data = 2.5;
+	}
+	else if (davinci_joystick.joint_states.position[2]<-2.5)
+	{
+		roll_setpoint.data = -2.5;
+	}
+	else
+	{
+		roll_setpoint.data = davinci_joystick.joint_states.position[2];
+	}
 
 
-	jaw_left_setpoint.data = -davinci_joystick.joint_states.position[0] + davinci_joystick.joint_states.position[1];
-	jaw_right_setpoint.data = -davinci_joystick.joint_states.position[0] - davinci_joystick.joint_states.position[1];
+	if (davinci_joystick.joint_states.position[3]>1.2)
+	{
+		pitch_setpoint.data = 1.2;
+	}
+	else if (davinci_joystick.joint_states.position[3]<-1.2)
+	{
+		pitch_setpoint.data = -1.2;
+	}
+	else
+	{
+		pitch_setpoint.data =davinci_joystick.joint_states.position[3];
+	}
 
-	roll_setpoint.data = 0;//davinci_joystick.joint_states.position[1];
-	pitch_setpoint.data =davinci_joystick.joint_states.position[3];
-    	
+	
+    	if (-davinci_joystick.joint_states.position[0] + davinci_joystick.joint_states.position[1] > 1.5)
+	{
+		jaw_left_setpoint.data = 1.5;
+	}
+	else if (-davinci_joystick.joint_states.position[0] + davinci_joystick.joint_states.position[1] < -1.5)
+	{
+		jaw_left_setpoint.data = -1.5;
+	}
+	else
+	{
+		jaw_left_setpoint.data = -davinci_joystick.joint_states.position[0] + davinci_joystick.joint_states.position[1];
+	}
+
+	if (-davinci_joystick.joint_states.position[0] - davinci_joystick.joint_states.position[1] > 1.5)
+	{
+		jaw_right_setpoint.data = 1.5;
+	}
+	else if (-davinci_joystick.joint_states.position[0] - davinci_joystick.joint_states.position[1] < -1.5)
+	{
+		jaw_right_setpoint.data = -1.5;
+	}
+	else
+	{
+		jaw_right_setpoint.data = -davinci_joystick.joint_states.position[0] - davinci_joystick.joint_states.position[1];
+	}
+
+
 	instr_yawl_pub.publish(jaw_left_setpoint);
 	instr_yawr_pub.publish(jaw_right_setpoint);
 	instr_roll_pub.publish(roll_setpoint);
