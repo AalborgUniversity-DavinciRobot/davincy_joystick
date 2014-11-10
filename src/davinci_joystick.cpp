@@ -384,6 +384,15 @@ void Joystick::update_position(vector<double> Theta_old, vector<double> Theta_ne
 }
 void Joystick::current_setpoint(double i1,double i2, double i3, double i4)
 {
+
+	I1_par[0]=1.0;
+	I1_par[1]=0.0;
+	I2_par[0]=1.0;
+	I2_par[1]=0.0;
+	I3_par[0]=1.0;
+	I3_par[1]=0.0;
+	I4_par[0]=1.0;
+	I4_par[1]=0.0;
 	I_setpoint.clear();
 	I_setpoint.push_back((i1-I1_par[1])/I1_par[0]);
 	I_setpoint.push_back((i2-I2_par[1])/I2_par[0]);
@@ -549,7 +558,7 @@ void Joystick::check_limits(void)
 class Davinci_arm
 {
 public:
-	sensor_msgs::JointState state_arm;
+	sensor_msgs::JointState state_;
 	void StateCallback(sensor_msgs::JointState arm);
 private:
 
@@ -557,7 +566,11 @@ private:
 
 void Davinci_arm::StateCallback(sensor_msgs::JointState arm)
 {
-	state_arm = arm;
+
+	state_ = arm;
+	// ROS_INFO(" %lf \n",state_.effort[5]);
+	// p4_hand_pitch, p4_hand_roll, p4_intr_jaw_left, p4 instr_jaw_right, p4_instr_pitch, p4_instr_roll, p4_instr_slide
+
 }
 
 int main(int argc, char **argv)
@@ -572,7 +585,7 @@ int main(int argc, char **argv)
     ros::Publisher instr_pitch_pub = n.advertise<std_msgs::Float64>("/davinci/p4_instrument_pitch_controller/command",1);
     ros::Publisher instr_yawl_pub = n.advertise<std_msgs::Float64>("/davinci/p4_instrument_jaw_left_controller/command",1);
     ros::Publisher instr_yawr_pub = n.advertise<std_msgs::Float64>("/davinci/p4_instrument_jaw_right_controller/command",1);
-    ros::Subscriber joint_sub = n.subscribe("davinci/joint_states", 1, &Davinci_arm::StateCallback, &P4);
+    ros::Subscriber arm_sub = n.subscribe("davinci/joint_states", 1, &Davinci_arm::StateCallback, &P4);
 
     ros::Rate rate(FREQ);
 
@@ -606,12 +619,14 @@ int main(int argc, char **argv)
     msg_init.print_message(msg_init.current);
     msg_old = msg_init;
 
+	
+
    	//davinci_joystick.callibration(msg);
     sleep(2);
 
     while (ros::ok()) // Keep spinning loop until user presses Ctrl+C
     {
-
+	ROS_INFO(" %lf \n",P4.state_.effort[5]);
     	davinci_joystick.current_setpoint(0.0,0.0,0.0,0.0);
     	msg.send_message(davinci_joystick.I_setpoint);
 
