@@ -26,16 +26,16 @@ using namespace std;
 #define GEAR_RATIO_4 19.0			// Gear ratio motor 4
 #define OFFSET 0.06
 
-#define IMAX_1 1.0					// Max current when sended 0xFF, continuous
+#define IMAX_1 0.2					// Max current when sended 0xFF, continuous
 #define IMAXC_1 0.32				// Max continous current according to datasheet
 #define PMAX_1 3.0					// Power rating
-#define IMAX_2 2.0					// Max current when sended 0xFF, continuous
+#define IMAX_2 0.2					// Max current when sended 0xFF, continuous
 #define IMAXC_2 0.681				// Max continous current according to datasheet
 #define PMAX_2 6.0					// Power rating
-#define IMAX_3 1000
+#define IMAX_3 0.5
 #define IMAXC_3 0.0
 #define PMAX_3 0.0
-#define IMAX_4 2.0
+#define IMAX_4 0.5
 #define IMAXC_4 0.681				// Max continous current according to datasheet
 #define PMAX_4 6.0					// Power rating
 
@@ -241,7 +241,7 @@ void Message::print_message(vector<double> vec)
 {
 	for (int i=0;i<vec.size();i++)
 	{
-		printf("%lf\t",vec[i]);
+		printf("%lf\t",vec[2]);
 	}
 	printf("\n");
 }
@@ -263,7 +263,7 @@ void Message::send_message(vector<double> I_sp)
 	else {S4=1;}
 
 
-	uint8_t message[]={0x00, S1*255, I_sp[0]*255.0/IMAX_1, S2*255, I_sp[1]*255.0/IMAX_2, S3*255, I_sp[2]*255.0/IMAX_3, S4*255, I_sp[3]*255.0/IMAX_4, 0xFF};
+	uint8_t message[]={0x00, S1*255, I_sp[0]*255.0/IMAX_1, S2*255, I_sp[1]*255.0/IMAX_2, S3*255, I_sp[2]*255.0, S4*255, I_sp[3]*255.0, 0xFF};
 	//uint8_t message[]={0x00, S1*255, 0, S2*255, 0, S3*255, 0, S4*255, 0, 0xFF};
 		/* bytes send {Byte_1, Byte_2, Byte_3, Byte_4, Byte_5, Byte_6, Byte_7, Byte_8, Byte_9, Byte_10}
 		 * Byte_1: Start byte 0x00 (0b00000000)
@@ -316,15 +316,23 @@ void Joystick::limit_current(void)
 {
 	if (I_setpoint[0] >IMAX_1)
 	{ I_setpoint[0] = IMAX_1; }
+	if (I_setpoint[0] <-IMAX_1)
+	{ I_setpoint[0] = -IMAX_1; }
 
 	if (I_setpoint[1] >IMAX_2)
 	{ I_setpoint[1] = IMAX_2; }
+	if (I_setpoint[1] <-IMAX_2)
+	{ I_setpoint[1] = -IMAX_2; }
 
 	if (I_setpoint[2] >IMAX_3)
 	{ I_setpoint[2] = IMAX_3; }
+	if (I_setpoint[2] <-IMAX_3)
+	{ I_setpoint[2] = -IMAX_3; }
 
 	if (I_setpoint[3] >IMAX_4)
 	{ I_setpoint[3] = IMAX_4; }
+	if (I_setpoint[3] <-IMAX_4)
+	{ I_setpoint[3] = -IMAX_4; }
 }
 void Joystick::create_joint_state_msg(void)
 {
@@ -394,6 +402,8 @@ void Joystick::current_setpoint(double i1,double i2, double i3, double i4)
 	I4_par[0]=1.0;
 	I4_par[1]=0.0;
 	I_setpoint.clear();
+
+
 	I_setpoint.push_back((i1-I1_par[1])/I1_par[0]);
 	I_setpoint.push_back((i2-I2_par[1])/I2_par[0]);
 	I_setpoint.push_back((i3-I3_par[1])/I3_par[0]);
@@ -571,12 +581,15 @@ private:
 
 };
 
-void Davinci::Davinci()
+Davinci::Davinci()
 {
 	I_roll = 0.0;
 	I_jaw_left = 0.0;
 	I_jaw_right = 0.0;
 	I_pitch = 0.0;
+}
+Davinci::~Davinci()
+{
 }
 void Davinci::StateCallback(sensor_msgs::JointState arm)
 {
@@ -643,10 +656,10 @@ int main(int argc, char **argv)
     while (ros::ok()) // Keep spinning loop until user presses Ctrl+C
     {
 
-    	ROS_INFO(" %lf \n",arm_P4.state_.effort[5]);
-    	davinci_joystick.current_setpoint(0.0,0.0,0.0,0.0);
+    	
+    	
     	//davinci_joystick.current_setpoint(arm_P4.I_pinch,arm_P4.I_yaw,arm_P4.I_roll,arm_P4.I_pitch);
-    	msg.send_message(davinci_joystick.I_setpoint);
+    	
 
     	msg.get_message();
     	if (msg.msg_found)
@@ -654,6 +667,9 @@ int main(int argc, char **argv)
     		davinci_joystick.update_position(msg_old.position,msg.position);
     		davinci_joystick.update_current(msg.current);
     	}
+	davinci_joystick.current_setpoint(0.0,0.0,-arm_P4.I_roll,-arm_P4.I_pitch);
+	msg.send_message(davinci_joystick.I_setpoint);
+	
 
     	davinci_joystick.create_joint_state_msg();
 	   	davinci_joystick.check_limits();
