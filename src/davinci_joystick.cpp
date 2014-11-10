@@ -555,19 +555,35 @@ void Joystick::check_limits(void)
 
 
 
-class Davinci_arm
+class Davinci
 {
 public:
-	sensor_msgs::JointState state_;
+	double I_roll;
+	double I_jaw_left;
+	double I_jaw_right;
+	double I_pitch;
+
+
 	void StateCallback(sensor_msgs::JointState arm);
+	Davinci();
+	~Davinci();
 private:
 
 };
 
-void Davinci_arm::StateCallback(sensor_msgs::JointState arm)
+void Davinci::Davinci()
 {
-
-	state_ = arm;
+	I_roll = 0.0;
+	I_jaw_left = 0.0;
+	I_jaw_right = 0.0;
+	I_pitch = 0.0;
+}
+void Davinci::StateCallback(sensor_msgs::JointState arm)
+{
+	I_jaw_left = arm.effort[2];
+	I_jaw_right = arm.effort[3];
+	I_pitch = arm.effort[4];
+	I_roll = arm.effort[5];
 	// ROS_INFO(" %lf \n",state_.effort[5]);
 	// p4_hand_pitch, p4_hand_roll, p4_intr_jaw_left, p4 instr_jaw_right, p4_instr_pitch, p4_instr_roll, p4_instr_slide
 
@@ -575,7 +591,7 @@ void Davinci_arm::StateCallback(sensor_msgs::JointState arm)
 
 int main(int argc, char **argv)
 {
-	Davinci_arm P4;
+	Davinci arm_P4;
 
 	// ROS initialization
     ros::init(argc, argv, "joystick_get_state");
@@ -585,7 +601,7 @@ int main(int argc, char **argv)
     ros::Publisher instr_pitch_pub = n.advertise<std_msgs::Float64>("/davinci/p4_instrument_pitch_controller/command",1);
     ros::Publisher instr_yawl_pub = n.advertise<std_msgs::Float64>("/davinci/p4_instrument_jaw_left_controller/command",1);
     ros::Publisher instr_yawr_pub = n.advertise<std_msgs::Float64>("/davinci/p4_instrument_jaw_right_controller/command",1);
-    ros::Subscriber arm_sub = n.subscribe("davinci/joint_states", 1, &Davinci_arm::StateCallback, &P4);
+    ros::Subscriber arm_sub = n.subscribe("/davinci/joint_states", 1, &Davinci::StateCallback, &arm_P4);
 
     ros::Rate rate(FREQ);
 
@@ -626,8 +642,10 @@ int main(int argc, char **argv)
 
     while (ros::ok()) // Keep spinning loop until user presses Ctrl+C
     {
-	ROS_INFO(" %lf \n",P4.state_.effort[5]);
+
+    	ROS_INFO(" %lf \n",arm_P4.state_.effort[5]);
     	davinci_joystick.current_setpoint(0.0,0.0,0.0,0.0);
+    	//davinci_joystick.current_setpoint(arm_P4.I_pinch,arm_P4.I_yaw,arm_P4.I_roll,arm_P4.I_pitch);
     	msg.send_message(davinci_joystick.I_setpoint);
 
     	msg.get_message();
