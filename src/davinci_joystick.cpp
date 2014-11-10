@@ -43,9 +43,9 @@ using namespace std;
 #define BIT_TO_DEGREE_MEASUREMENT 360/2047.0	// ratio to convert measured message into position [degree] (11bits, 360degrees)
 #define DEGREE_TO_RAD M_PI/180					// ratio to convert degrees to radians
 
-#define ROLL_LIMIT 2.5
+/*#define ROLL_LIMIT 2.5
 #define PITCH_LIMIT 1.2
-#define JAW_LIMIT 1.5
+#define JAW_LIMIT 1.5 */
 
 class Port
 {
@@ -288,7 +288,7 @@ class Joystick
 public:
 	double Theta1, Theta2, Theta3, Theta4;
 	double dTheta1, dTheta2, dTheta3, dTheta4;
-	double pitch, roll, jaw_left, jaw_right;
+	//double pitch, roll, jaw_left, jaw_right;
 	double I1, I2, I3, I4;
 	vector<double> Position;
 	vector<double> I_setpoint;
@@ -297,7 +297,7 @@ public:
 	void update_position(vector<double> Theta_old, vector<double> Theta_new);
 	void update_current(vector<double> I);
 	void current_setpoint(double i1,double i2, double i3, double i4);
-	void check_limits();
+	//void check_limits();
 
 	void create_joint_state_msg(void);
 	void callibration(Message msg);
@@ -507,7 +507,7 @@ void Joystick::callibration(Message msg)
        	fclose(pFile);
 	}
 }
-void Joystick::check_limits(void)
+/*void Joystick::check_limits(void)
 {
 	if (-Theta3/GEAR_RATIO_3*DEGREE_TO_RAD > ROLL_LIMIT)
 	{
@@ -561,68 +561,29 @@ void Joystick::check_limits(void)
 		jaw_right = Theta1/GEAR_RATIO_1*DEGREE_TO_RAD + Theta2/GEAR_RATIO_2*DEGREE_TO_RAD;
 	}
 
-}
+}*/
 
 
-
-class Davinci
-{
-public:
-	double I_roll;
-	double I_jaw_left;
-	double I_jaw_right;
-	double I_pitch;
-
-
-	void StateCallback(sensor_msgs::JointState arm);
-	Davinci();
-	~Davinci();
-private:
-
-};
-
-Davinci::Davinci()
-{
-	I_roll = 0.0;
-	I_jaw_left = 0.0;
-	I_jaw_right = 0.0;
-	I_pitch = 0.0;
-}
-Davinci::~Davinci()
-{
-}
-void Davinci::StateCallback(sensor_msgs::JointState arm)
-{
-	I_jaw_left = arm.effort[2];
-	I_jaw_right = arm.effort[3];
-	I_pitch = arm.effort[4];
-	I_roll = arm.effort[5];
-	// ROS_INFO(" %lf \n",state_.effort[5]);
-	// p4_hand_pitch, p4_hand_roll, p4_intr_jaw_left, p4 instr_jaw_right, p4_instr_pitch, p4_instr_roll, p4_instr_slide
-
-}
 
 int main(int argc, char **argv)
 {
-	Davinci arm_P4;
 
 	// ROS initialization
     ros::init(argc, argv, "joystick_get_state");
     ros::NodeHandle n;
     ros::Publisher joystick_pub = n.advertise<sensor_msgs::JointState>("davinci_joystick/joint_states",1);
-    ros::Publisher instr_roll_pub = n.advertise<std_msgs::Float64>("/davinci/p4_instrument_roll_controller/command",1);
+    /*ros::Publisher instr_roll_pub = n.advertise<std_msgs::Float64>("/davinci/p4_instrument_roll_controller/command",1);
     ros::Publisher instr_pitch_pub = n.advertise<std_msgs::Float64>("/davinci/p4_instrument_pitch_controller/command",1);
     ros::Publisher instr_yawl_pub = n.advertise<std_msgs::Float64>("/davinci/p4_instrument_jaw_left_controller/command",1);
-    ros::Publisher instr_yawr_pub = n.advertise<std_msgs::Float64>("/davinci/p4_instrument_jaw_right_controller/command",1);
-    ros::Subscriber arm_sub = n.subscribe("/davinci/joint_states", 1, &Davinci::StateCallback, &arm_P4);
+    ros::Publisher instr_yawr_pub = n.advertise<std_msgs::Float64>("/davinci/p4_instrument_jaw_right_controller/command",1);*/
 
     ros::Rate rate(FREQ);
 
 
-	std_msgs::Float64 roll_setpoint;
+	/*std_msgs::Float64 roll_setpoint;
 	std_msgs::Float64 pitch_setpoint;
 	std_msgs::Float64 jaw_left_setpoint;
-	std_msgs::Float64 jaw_right_setpoint;
+	std_msgs::Float64 jaw_right_setpoint;*/
 
     Port serial_port;
     serial_port.open_port();
@@ -656,34 +617,29 @@ int main(int argc, char **argv)
     while (ros::ok()) // Keep spinning loop until user presses Ctrl+C
     {
 
-    	
-    	
-    	//davinci_joystick.current_setpoint(arm_P4.I_pinch,arm_P4.I_yaw,arm_P4.I_roll,arm_P4.I_pitch);
-    	
-
     	msg.get_message();
     	if (msg.msg_found)
     	{
     		davinci_joystick.update_position(msg_old.position,msg.position);
     		davinci_joystick.update_current(msg.current);
     	}
-	davinci_joystick.current_setpoint(0.0,0.0,-arm_P4.I_roll,-arm_P4.I_pitch);
-	msg.send_message(davinci_joystick.I_setpoint);
+		davinci_joystick.current_setpoint(0.0,0.0,0.0,0.0);
+		msg.send_message(davinci_joystick.I_setpoint);
 	
 
     	davinci_joystick.create_joint_state_msg();
-	   	davinci_joystick.check_limits();
+	   //	davinci_joystick.check_limits();
 
-    	roll_setpoint.data = davinci_joystick.roll;
+    	/*roll_setpoint.data = davinci_joystick.roll;
     	pitch_setpoint.data = davinci_joystick.pitch;
     	jaw_left_setpoint.data = davinci_joystick.jaw_left;
-    	jaw_right_setpoint.data = davinci_joystick.jaw_right;
+    	jaw_right_setpoint.data = davinci_joystick.jaw_right;*/
 
 
-		instr_yawl_pub.publish(jaw_left_setpoint);
+		/*instr_yawl_pub.publish(jaw_left_setpoint);
 		instr_yawr_pub.publish(jaw_right_setpoint);
 		instr_roll_pub.publish(roll_setpoint);
-		instr_pitch_pub.publish(pitch_setpoint);
+		instr_pitch_pub.publish(pitch_setpoint);*/
 
     	joystick_pub.publish(davinci_joystick.joint_states);
     	msg_old = msg;
