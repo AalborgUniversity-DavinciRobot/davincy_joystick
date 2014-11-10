@@ -25,7 +25,7 @@ int main(int argc, char **argv)
 	ros::NodeHandle n;
 	ros::Subscriber joint_sub = n.subscribe("davinci_joystick/joint_states", 1, &Joystick::jointCallback, &joystick);
 	ros::Publisher joint_pub = n.advertise<sensor_msgs::JointState>("joint_states", 1);
-	ros::Rate rate(100);
+	ros::Rate rate(1000);
 
 	while (ros::ok())
 	{

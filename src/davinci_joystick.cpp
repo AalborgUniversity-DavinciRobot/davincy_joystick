@@ -43,6 +43,9 @@ using namespace std;
 #define BIT_TO_DEGREE_MEASUREMENT 360/2047.0	// ratio to convert measured message into position [degree] (11bits, 360degrees)
 #define DEGREE_TO_RAD M_PI/180					// ratio to convert degrees to radians
 
+#define ROLL_LIMIT 2.5
+#define PITCH_LIMIT 1.2
+#define JAW_LIMIT 1.5
 
 class Port
 {
@@ -260,8 +263,8 @@ void Message::send_message(vector<double> I_sp)
 	else {S4=1;}
 
 
-	//uint8_t message[]={0x00, S1*255, I_sp[0]*255.0/IMAX_1, S2*255, I_sp[1]*255.0/IMAX_2, S3*255, I_sp[2]*255.0/IMAX_3, S4*255, I_sp[3]*255.0/IMAX_4, 0xFF};
-uint8_t message[]={0x00, S1*255, 0, S2*255, 0, S3*255, 0, S4*255, 0, 0xFF};
+	uint8_t message[]={0x00, S1*255, I_sp[0]*255.0/IMAX_1, S2*255, I_sp[1]*255.0/IMAX_2, S3*255, I_sp[2]*255.0/IMAX_3, S4*255, I_sp[3]*255.0/IMAX_4, 0xFF};
+	//uint8_t message[]={0x00, S1*255, 0, S2*255, 0, S3*255, 0, S4*255, 0, 0xFF};
 		/* bytes send {Byte_1, Byte_2, Byte_3, Byte_4, Byte_5, Byte_6, Byte_7, Byte_8, Byte_9, Byte_10}
 		 * Byte_1: Start byte 0x00 (0b00000000)
 		 * Byte_2: Sign of Current motor 1; MSB = 0 Clamp, MSB = 1 Open
@@ -285,6 +288,7 @@ class Joystick
 public:
 	double Theta1, Theta2, Theta3, Theta4;
 	double dTheta1, dTheta2, dTheta3, dTheta4;
+	double pitch, roll, jaw_left, jaw_right;
 	double I1, I2, I3, I4;
 	vector<double> Position;
 	vector<double> I_setpoint;
@@ -293,6 +297,7 @@ public:
 	void update_position(vector<double> Theta_old, vector<double> Theta_new);
 	void update_current(vector<double> I);
 	void current_setpoint(double i1,double i2, double i3, double i4);
+	void check_limits();
 
 	void create_joint_state_msg(void);
 	void callibration(Message msg);
@@ -483,9 +488,82 @@ void Joystick::callibration(Message msg)
        	fclose(pFile);
 	}
 }
+void Joystick::check_limits(void)
+{
+	if (-Theta3/GEAR_RATIO_3*DEGREE_TO_RAD > ROLL_LIMIT)
+	{
+		roll = ROLL_LIMIT;
+	}
+	else if (-Theta3/GEAR_RATIO_3*DEGREE_TO_RAD < -ROLL_LIMIT)
+	{
+		roll = -ROLL_LIMIT;
+	}
+	else
+	{
+		roll = -Theta3/GEAR_RATIO_3*DEGREE_TO_RAD;
+	}
+
+	if (-Theta4/GEAR_RATIO_4*DEGREE_TO_RAD > PITCH_LIMIT)
+	{
+		pitch = PITCH_LIMIT;
+	}
+	else if (-Theta4/GEAR_RATIO_4*DEGREE_TO_RAD < -PITCH_LIMIT)
+	{
+		pitch = -PITCH_LIMIT;
+	}
+	else
+	{
+		pitch = -Theta4/GEAR_RATIO_4*DEGREE_TO_RAD;
+	}
+
+	if (Theta1/GEAR_RATIO_1*DEGREE_TO_RAD  - Theta2/GEAR_RATIO_2*DEGREE_TO_RAD > JAW_LIMIT)
+	{
+		jaw_left = JAW_LIMIT;
+	}
+	else if (Theta1/GEAR_RATIO_1*DEGREE_TO_RAD - Theta2/GEAR_RATIO_2*DEGREE_TO_RAD < -JAW_LIMIT)
+	{
+		jaw_left = -JAW_LIMIT;
+	}
+	else
+	{
+		jaw_left = Theta1/GEAR_RATIO_1*DEGREE_TO_RAD  - Theta2/GEAR_RATIO_2*DEGREE_TO_RAD;
+	}
+
+	if (Theta1/GEAR_RATIO_1*DEGREE_TO_RAD + Theta2/GEAR_RATIO_2*DEGREE_TO_RAD > JAW_LIMIT)
+	{
+		jaw_right = JAW_LIMIT;
+	}
+	else if (Theta1/GEAR_RATIO_1*DEGREE_TO_RAD + Theta2/GEAR_RATIO_2*DEGREE_TO_RAD < -JAW_LIMIT)
+	{
+		jaw_right = -JAW_LIMIT;
+	}
+	else
+	{
+		jaw_right = Theta1/GEAR_RATIO_1*DEGREE_TO_RAD + Theta2/GEAR_RATIO_2*DEGREE_TO_RAD;
+	}
+
+}
+
+
+
+class Davinci_arm
+{
+public:
+	sensor_msgs::JointState state_arm;
+	void StateCallback(sensor_msgs::JointState arm);
+private:
+
+};
+
+void Davinci_arm::StateCallback(sensor_msgs::JointState arm)
+{
+	state_arm = arm;
+}
 
 int main(int argc, char **argv)
 {
+	Davinci_arm P4;
+
 	// ROS initialization
     ros::init(argc, argv, "joystick_get_state");
     ros::NodeHandle n;
@@ -494,7 +572,10 @@ int main(int argc, char **argv)
     ros::Publisher instr_pitch_pub = n.advertise<std_msgs::Float64>("/davinci/p4_instrument_pitch_controller/command",1);
     ros::Publisher instr_yawl_pub = n.advertise<std_msgs::Float64>("/davinci/p4_instrument_jaw_left_controller/command",1);
     ros::Publisher instr_yawr_pub = n.advertise<std_msgs::Float64>("/davinci/p4_instrument_jaw_right_controller/command",1);
+    ros::Subscriber joint_sub = n.subscribe("davinci/joint_states", 1, &Davinci_arm::StateCallback, &P4);
+
     ros::Rate rate(FREQ);
+
 
 	std_msgs::Float64 roll_setpoint;
 	std_msgs::Float64 pitch_setpoint;
@@ -515,14 +596,14 @@ int main(int argc, char **argv)
     msg_init.port=serial_port.port_handle;
 
     Joystick davinci_joystick;
-	int o = 0;
+
     while (!msg_init.msg_found)
     {
     	msg_init.get_message();
-	ROS_INFO("GETTING INITIAL MESSAGE\n");
+    	ROS_INFO("GETTING INITIAL MESSAGE\n");
     }
     msg_init.print_message(msg_init.position);
-msg_init.print_message(msg_init.current);
+    msg_init.print_message(msg_init.current);
     msg_old = msg_init;
 
    	//davinci_joystick.callibration(msg);
@@ -530,6 +611,7 @@ msg_init.print_message(msg_init.current);
 
     while (ros::ok()) // Keep spinning loop until user presses Ctrl+C
     {
+
     	davinci_joystick.current_setpoint(0.0,0.0,0.0,0.0);
     	msg.send_message(davinci_joystick.I_setpoint);
 
@@ -541,68 +623,18 @@ msg_init.print_message(msg_init.current);
     	}
 
     	davinci_joystick.create_joint_state_msg();
-	
-	
+	   	davinci_joystick.check_limits();
 
-	if (davinci_joystick.joint_states.position[2]>2.5)
-	{
-		roll_setpoint.data = 2.5;
-	}
-	else if (davinci_joystick.joint_states.position[2]<-2.5)
-	{
-		roll_setpoint.data = -2.5;
-	}
-	else
-	{
-		roll_setpoint.data = davinci_joystick.joint_states.position[2];
-	}
+    	roll_setpoint.data = davinci_joystick.roll;
+    	pitch_setpoint.data = davinci_joystick.pitch;
+    	jaw_left_setpoint.data = davinci_joystick.jaw_left;
+    	jaw_right_setpoint.data = davinci_joystick.jaw_right;
 
 
-	if (davinci_joystick.joint_states.position[3]>1.2)
-	{
-		pitch_setpoint.data = 1.2;
-	}
-	else if (davinci_joystick.joint_states.position[3]<-1.2)
-	{
-		pitch_setpoint.data = -1.2;
-	}
-	else
-	{
-		pitch_setpoint.data =davinci_joystick.joint_states.position[3];
-	}
-
-	
-    	if (-davinci_joystick.joint_states.position[0] + davinci_joystick.joint_states.position[1] > 1.5)
-	{
-		jaw_left_setpoint.data = 1.5;
-	}
-	else if (-davinci_joystick.joint_states.position[0] + davinci_joystick.joint_states.position[1] < -1.5)
-	{
-		jaw_left_setpoint.data = -1.5;
-	}
-	else
-	{
-		jaw_left_setpoint.data = -davinci_joystick.joint_states.position[0] + davinci_joystick.joint_states.position[1];
-	}
-
-	if (-davinci_joystick.joint_states.position[0] - davinci_joystick.joint_states.position[1] > 1.5)
-	{
-		jaw_right_setpoint.data = 1.5;
-	}
-	else if (-davinci_joystick.joint_states.position[0] - davinci_joystick.joint_states.position[1] < -1.5)
-	{
-		jaw_right_setpoint.data = -1.5;
-	}
-	else
-	{
-		jaw_right_setpoint.data = -davinci_joystick.joint_states.position[0] - davinci_joystick.joint_states.position[1];
-	}
-
-
-	instr_yawl_pub.publish(jaw_left_setpoint);
-	instr_yawr_pub.publish(jaw_right_setpoint);
-	instr_roll_pub.publish(roll_setpoint);
-	instr_pitch_pub.publish(pitch_setpoint);
+		instr_yawl_pub.publish(jaw_left_setpoint);
+		instr_yawr_pub.publish(jaw_right_setpoint);
+		instr_roll_pub.publish(roll_setpoint);
+		instr_pitch_pub.publish(pitch_setpoint);
 
     	joystick_pub.publish(davinci_joystick.joint_states);
     	msg_old = msg;
