@@ -18,7 +18,7 @@ using namespace std;
 // Define constants
 #define PORT "/dev/ttyUSB0"			// connected port
 #define BAUDRATE B230400			// Baud rate = 230400 bits/s
-#define FREQ 100					// Frequency at which node is running
+#define FREQ 100					// Frequency at which node is running (190 Hz max, because we need to wait till buffer has enough bytes available (5ms)
 #define M_PI 3.14159265358979323846	// PI
 #define GEAR_RATIO_1 5.1*2			// Gear ratio motor 1 only 256 steps, therefore *2
 #define GEAR_RATIO_2 19.0			// Gear ratio motor 2
@@ -42,10 +42,6 @@ using namespace std;
 #define BIT_TO_CURRENT_MEASUREMENT 2.0/4095.0	// ratio to convert measured message into current [A] (12 bits, 2Amps max)
 #define BIT_TO_DEGREE_MEASUREMENT 360/2047.0	// ratio to convert measured message into position [degree] (11bits, 360degrees)
 #define DEGREE_TO_RAD M_PI/180					// ratio to convert degrees to radians
-
-/*#define ROLL_LIMIT 2.5
-#define PITCH_LIMIT 1.2
-#define JAW_LIMIT 1.5 */
 
 class Port
 {
@@ -502,66 +498,11 @@ void Joystick::callibration(Message msg)
 
        	if(joint==1){I1_par[0]=slope;I1_par[1]=offset;}
        	else if(joint==2){I2_par[0]=slope;I2_par[1]=offset;}
-       	//else if(joint==3){I3_par[0]=slope;I3_par[1]=offset;}
+       	else if(joint==3){I3_par[0]=slope;I3_par[1]=offset;}
        	else if(joint==4){I4_par[0]=slope;I4_par[1]=offset;}
        	fclose(pFile);
 	}
 }
-/*void Joystick::check_limits(void)
-{
-	if (-Theta3/GEAR_RATIO_3*DEGREE_TO_RAD > ROLL_LIMIT)
-	{
-		roll = ROLL_LIMIT;
-	}
-	else if (-Theta3/GEAR_RATIO_3*DEGREE_TO_RAD < -ROLL_LIMIT)
-	{
-		roll = -ROLL_LIMIT;
-	}
-	else
-	{
-		roll = -Theta3/GEAR_RATIO_3*DEGREE_TO_RAD;
-	}
-
-	if (-Theta4/GEAR_RATIO_4*DEGREE_TO_RAD > PITCH_LIMIT)
-	{
-		pitch = PITCH_LIMIT;
-	}
-	else if (-Theta4/GEAR_RATIO_4*DEGREE_TO_RAD < -PITCH_LIMIT)
-	{
-		pitch = -PITCH_LIMIT;
-	}
-	else
-	{
-		pitch = -Theta4/GEAR_RATIO_4*DEGREE_TO_RAD;
-	}
-
-	if (Theta1/GEAR_RATIO_1*DEGREE_TO_RAD  - Theta2/GEAR_RATIO_2*DEGREE_TO_RAD > JAW_LIMIT)
-	{
-		jaw_left = JAW_LIMIT;
-	}
-	else if (Theta1/GEAR_RATIO_1*DEGREE_TO_RAD - Theta2/GEAR_RATIO_2*DEGREE_TO_RAD < -JAW_LIMIT)
-	{
-		jaw_left = -JAW_LIMIT;
-	}
-	else
-	{
-		jaw_left = Theta1/GEAR_RATIO_1*DEGREE_TO_RAD  - Theta2/GEAR_RATIO_2*DEGREE_TO_RAD;
-	}
-
-	if (Theta1/GEAR_RATIO_1*DEGREE_TO_RAD + Theta2/GEAR_RATIO_2*DEGREE_TO_RAD > JAW_LIMIT)
-	{
-		jaw_right = JAW_LIMIT;
-	}
-	else if (Theta1/GEAR_RATIO_1*DEGREE_TO_RAD + Theta2/GEAR_RATIO_2*DEGREE_TO_RAD < -JAW_LIMIT)
-	{
-		jaw_right = -JAW_LIMIT;
-	}
-	else
-	{
-		jaw_right = Theta1/GEAR_RATIO_1*DEGREE_TO_RAD + Theta2/GEAR_RATIO_2*DEGREE_TO_RAD;
-	}
-
-}*/
 
 
 
@@ -572,18 +513,9 @@ int main(int argc, char **argv)
     ros::init(argc, argv, "joystick_get_state");
     ros::NodeHandle n;
     ros::Publisher joystick_pub = n.advertise<sensor_msgs::JointState>("davinci_joystick/joint_states",1);
-    /*ros::Publisher instr_roll_pub = n.advertise<std_msgs::Float64>("/davinci/p4_instrument_roll_controller/command",1);
-    ros::Publisher instr_pitch_pub = n.advertise<std_msgs::Float64>("/davinci/p4_instrument_pitch_controller/command",1);
-    ros::Publisher instr_yawl_pub = n.advertise<std_msgs::Float64>("/davinci/p4_instrument_jaw_left_controller/command",1);
-    ros::Publisher instr_yawr_pub = n.advertise<std_msgs::Float64>("/davinci/p4_instrument_jaw_right_controller/command",1);*/
 
     ros::Rate rate(FREQ);
 
-
-	/*std_msgs::Float64 roll_setpoint;
-	std_msgs::Float64 pitch_setpoint;
-	std_msgs::Float64 jaw_left_setpoint;
-	std_msgs::Float64 jaw_right_setpoint;*/
 
     Port serial_port;
     serial_port.open_port();
@@ -628,18 +560,7 @@ int main(int argc, char **argv)
 	
 
     	davinci_joystick.create_joint_state_msg();
-	   //	davinci_joystick.check_limits();
 
-    	/*roll_setpoint.data = davinci_joystick.roll;
-    	pitch_setpoint.data = davinci_joystick.pitch;
-    	jaw_left_setpoint.data = davinci_joystick.jaw_left;
-    	jaw_right_setpoint.data = davinci_joystick.jaw_right;*/
-
-
-		/*instr_yawl_pub.publish(jaw_left_setpoint);
-		instr_yawr_pub.publish(jaw_right_setpoint);
-		instr_roll_pub.publish(roll_setpoint);
-		instr_pitch_pub.publish(pitch_setpoint);*/
 
     	joystick_pub.publish(davinci_joystick.joint_states);
     	msg_old = msg;
