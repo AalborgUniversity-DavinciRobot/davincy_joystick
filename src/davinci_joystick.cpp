@@ -24,20 +24,12 @@ using namespace std;
 #define GEAR_RATIO_2 19.0			// Gear ratio motor 2
 #define GEAR_RATIO_3 4.4			// Gear ratio motor 3
 #define GEAR_RATIO_4 19.0			// Gear ratio motor 4
-#define OFFSET 0.06
 
-#define IMAX_1 0.2					// Max current when sended 0xFF, continuous
-#define IMAXC_1 0.32				// Max continous current according to datasheet
-#define PMAX_1 3.0					// Power rating
-#define IMAX_2 0.2					// Max current when sended 0xFF, continuous
-#define IMAXC_2 0.681				// Max continous current according to datasheet
-#define PMAX_2 6.0					// Power rating
+#define IMAX_1 0.5
+#define IMAX_2 0.5
 #define IMAX_3 0.5
-#define IMAXC_3 0.0
-#define PMAX_3 0.0
 #define IMAX_4 0.5
-#define IMAXC_4 0.681				// Max continous current according to datasheet
-#define PMAX_4 6.0					// Power rating
+#define A_PER_BIT 1/126
 
 #define BIT_TO_CURRENT_MEASUREMENT 2.0/4095.0	// ratio to convert measured message into current [A] (12 bits, 2Amps max)
 #define BIT_TO_DEGREE_MEASUREMENT 360/2047.0	// ratio to convert measured message into position [degree] (11bits, 360degrees)
@@ -259,7 +251,7 @@ void Message::send_message(vector<double> I_sp)
 	else {S4=1;}
 
 
-	uint8_t message[]={0x00, S1*255, I_sp[0]*255.0/IMAX_1, S2*255, I_sp[1]*255.0/IMAX_2, S3*255, I_sp[2]*255.0, S4*255, I_sp[3]*255.0, 0xFF};
+	uint8_t message[]={0x00, S1*255, I_sp[0]*A_PER_BIT, S2*255, I_sp[1]*A_PER_BIT, S3*255, I_sp[2]*A_PER_BIT, S4*255, I_sp[3]*A_PER_BIT, 0xFF};
 	//uint8_t message[]={0x00, S1*255, 0, S2*255, 0, S3*255, 0, S4*255, 0, 0xFF};
 		/* bytes send {Byte_1, Byte_2, Byte_3, Byte_4, Byte_5, Byte_6, Byte_7, Byte_8, Byte_9, Byte_10}
 		 * Byte_1: Start byte 0x00 (0b00000000)
@@ -555,6 +547,8 @@ int main(int argc, char **argv)
     		davinci_joystick.update_position(msg_old.position,msg.position);
     		davinci_joystick.update_current(msg.current);
     	}
+
+
 		davinci_joystick.current_setpoint(0.0,0.0,0.0,0.0);
 		msg.send_message(davinci_joystick.I_setpoint);
 	
