@@ -2,6 +2,7 @@
 #include "ros/ros.h"
 #include <sensor_msgs/JointState.h>
 #include <std_msgs/Float64.h>
+#include "std_msgs/Float64MultiArray.h"
 #include <fcntl.h>
 #include <termios.h>
 #include <iostream>
@@ -29,7 +30,7 @@ using namespace std;
 #define IMAX_2 0.5
 #define IMAX_3 0.5
 #define IMAX_4 0.5
-#define A_PER_BIT 1/126
+#define A_PER_BIT 256.0
 
 #define BIT_TO_CURRENT_MEASUREMENT 2.0/4095.0	// ratio to convert measured message into current [A] (12 bits, 2Amps max)
 #define BIT_TO_DEGREE_MEASUREMENT 360/2047.0	// ratio to convert measured message into position [degree] (11bits, 360degrees)
@@ -252,6 +253,7 @@ void Message::send_message(vector<double> I_sp)
 
 
 	uint8_t message[]={0x00, S1*255, I_sp[0]*A_PER_BIT, S2*255, I_sp[1]*A_PER_BIT, S3*255, I_sp[2]*A_PER_BIT, S4*255, I_sp[3]*A_PER_BIT, 0xFF};
+
 	//uint8_t message[]={0x00, S1*255, 0, S2*255, 0, S3*255, 0, S4*255, 0, 0xFF};
 		/* bytes send {Byte_1, Byte_2, Byte_3, Byte_4, Byte_5, Byte_6, Byte_7, Byte_8, Byte_9, Byte_10}
 		 * Byte_1: Start byte 0x00 (0b00000000)
@@ -276,16 +278,17 @@ class Joystick
 public:
 	double Theta1, Theta2, Theta3, Theta4;
 	double dTheta1, dTheta2, dTheta3, dTheta4;
-	//double pitch, roll, jaw_left, jaw_right;
+
 	double I1, I2, I3, I4;
 	vector<double> Position;
 	vector<double> I_setpoint;
 	sensor_msgs::JointState joint_states;
+	bool ready_to_send;
 
 	void update_position(vector<double> Theta_old, vector<double> Theta_new);
 	void update_current(vector<double> I);
 	void current_setpoint(double i1,double i2, double i3, double i4);
-	//void check_limits();
+	void JoystickCallback(std_msgs::Float64MultiArray Isp);
 
 	void create_joint_state_msg(void);
 	void callibration(Message msg);
@@ -300,6 +303,19 @@ private:
 	double delta_position(double Theta_old, double Theta_new);
 
 };
+void Joystick::JoystickCallback(std_msgs::Float64MultiArray Isp)
+{
+	
+	if (Isp.data.size() == 4)
+	{
+		current_setpoint(Isp.data[0],Isp.data[1],Isp.data[2],Isp.data[3]);
+		ready_to_send = true;
+	}
+	else
+	{ready_to_send=false;}
+	
+}
+
 void Joystick::limit_current(void)
 {
 	if (I_setpoint[0] >IMAX_1)
@@ -500,12 +516,13 @@ void Joystick::callibration(Message msg)
 
 int main(int argc, char **argv)
 {
-
+	Joystick davinci_joystick;
+	davinci_joystick.ready_to_send = false;
 	// ROS initialization
     ros::init(argc, argv, "joystick_get_state");
     ros::NodeHandle n;
     ros::Publisher joystick_pub = n.advertise<sensor_msgs::JointState>("davinci_joystick/joint_states",1);
-
+    ros::Subscriber Isetpoint_sub = n.subscribe("davinci_joystick/I_sp",1,&Joystick::JoystickCallback, &davinci_joystick);
     ros::Rate rate(FREQ);
 
 
@@ -522,7 +539,7 @@ int main(int argc, char **argv)
     msg_old.port=serial_port.port_handle;
     msg_init.port=serial_port.port_handle;
 
-    Joystick davinci_joystick;
+    
 
     while (!msg_init.msg_found)
     {
@@ -540,7 +557,11 @@ int main(int argc, char **argv)
 
     while (ros::ok()) // Keep spinning loop until user presses Ctrl+C
     {
-
+	
+	if (davinci_joystick.ready_to_send)
+	{
+		msg.send_message(davinci_joystick.I_setpoint);
+	}
     	msg.get_message();
     	if (msg.msg_found)
     	{
@@ -549,8 +570,7 @@ int main(int argc, char **argv)
     	}
 
 
-		davinci_joystick.current_setpoint(0.0,0.0,0.0,0.0);
-		msg.send_message(davinci_joystick.I_setpoint);
+		
 	
 
     	davinci_joystick.create_joint_state_msg();
