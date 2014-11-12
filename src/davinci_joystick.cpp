@@ -28,9 +28,9 @@ using namespace std;
 
 #define IMAX_1 0.5
 #define IMAX_2 0.5
-#define IMAX_3 0.5
+#define IMAX_3 1.0
 #define IMAX_4 0.5
-#define A_PER_BIT 256.0
+#define BIT_PER_AMP 126.0
 
 #define BIT_TO_CURRENT_MEASUREMENT 2.0/4095.0	// ratio to convert measured message into current [A] (12 bits, 2Amps max)
 #define BIT_TO_DEGREE_MEASUREMENT 360/2047.0	// ratio to convert measured message into position [degree] (11bits, 360degrees)
@@ -252,7 +252,7 @@ void Message::send_message(vector<double> I_sp)
 	else {S4=1;}
 
 
-	uint8_t message[]={0x00, S1*255, I_sp[0]*A_PER_BIT, S2*255, I_sp[1]*A_PER_BIT, S3*255, I_sp[2]*A_PER_BIT, S4*255, I_sp[3]*A_PER_BIT, 0xFF};
+	uint8_t message[]={0x00, S1*255, I_sp[0]*BIT_PER_AMP, S2*255, I_sp[1]*BIT_PER_AMP, S3*255, I_sp[2]*BIT_PER_AMP, S4*255, I_sp[3]*BIT_PER_AMP, 0xFF};
 
 	//uint8_t message[]={0x00, S1*255, 0, S2*255, 0, S3*255, 0, S4*255, 0, 0xFF};
 		/* bytes send {Byte_1, Byte_2, Byte_3, Byte_4, Byte_5, Byte_6, Byte_7, Byte_8, Byte_9, Byte_10}
@@ -283,7 +283,6 @@ public:
 	vector<double> Position;
 	vector<double> I_setpoint;
 	sensor_msgs::JointState joint_states;
-	bool ready_to_send;
 
 	void update_position(vector<double> Theta_old, vector<double> Theta_new);
 	void update_current(vector<double> I);
@@ -303,16 +302,18 @@ private:
 	double delta_position(double Theta_old, double Theta_new);
 
 };
+
 void Joystick::JoystickCallback(std_msgs::Float64MultiArray Isp)
 {
 	
 	if (Isp.data.size() == 4)
 	{
 		current_setpoint(Isp.data[0],Isp.data[1],Isp.data[2],Isp.data[3]);
-		ready_to_send = true;
 	}
 	else
-	{ready_to_send=false;}
+	{
+		current_setpoint(0.0,0.0,0.0,0.0);
+	}
 	
 }
 
@@ -517,7 +518,7 @@ void Joystick::callibration(Message msg)
 int main(int argc, char **argv)
 {
 	Joystick davinci_joystick;
-	davinci_joystick.ready_to_send = false;
+
 	// ROS initialization
     ros::init(argc, argv, "joystick_get_state");
     ros::NodeHandle n;
@@ -557,11 +558,8 @@ int main(int argc, char **argv)
 
     while (ros::ok()) // Keep spinning loop until user presses Ctrl+C
     {
-	
-	if (davinci_joystick.ready_to_send)
-	{
+
 		msg.send_message(davinci_joystick.I_setpoint);
-	}
     	msg.get_message();
     	if (msg.msg_found)
     	{
@@ -569,9 +567,6 @@ int main(int argc, char **argv)
     		davinci_joystick.update_current(msg.current);
     	}
 
-
-		
-	
 
     	davinci_joystick.create_joint_state_msg();
 
