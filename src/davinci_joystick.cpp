@@ -283,10 +283,11 @@ public:
 
 	double I1, I2, I3, I4;
 	vector<double> Position;
+	vector<double> Velocity;
 	vector<double> I_setpoint;
 	sensor_msgs::JointState joint_states;
 
-	void update_position(vector<double> Theta_old, vector<double> Theta_new);
+	void update_position(vector<double> Theta_old, vector<double> Theta_new, double dT);
 	void update_current(vector<double> I);
 	void current_setpoint(double i1,double i2, double i3, double i4);
 	void JoystickCallback(std_msgs::Float64MultiArray Isp);
@@ -343,17 +344,22 @@ void Joystick::create_joint_state_msg(void)
 	joint_states.position.resize(4);
 	joint_states.name.resize(4);
 	joint_states.effort.resize(4);
+	joint_states.velocity.resize(4);
 	joint_states.name[0]="pinch";
 	joint_states.position[0]=-Theta1/GEAR_RATIO_1*DEGREE_TO_RAD;
+	joint_states.velocity[0]=Velocity[0]/GEAR_RATIO_1*DEGREE_TO_RAD;
 	joint_states.effort[0]=I1;
 	joint_states.name[1]="yaw";
 	joint_states.position[1]=-Theta2/GEAR_RATIO_2*DEGREE_TO_RAD;
+	joint_states.velocity[1]=Velocity[1]/GEAR_RATIO_2*DEGREE_TO_RAD;
 	joint_states.effort[1]=I2;
 	joint_states.name[2]="roll";
 	joint_states.position[2]=-Theta3/GEAR_RATIO_3*DEGREE_TO_RAD;
+	joint_states.velocity[2]=Velocity[2]/GEAR_RATIO_3*DEGREE_TO_RAD;
 	joint_states.effort[2]=I3;
 	joint_states.name[3]="pitch";
 	joint_states.position[3]=-Theta4/GEAR_RATIO_4*DEGREE_TO_RAD;
+	joint_states.velocity[3]=Velocity[3]/GEAR_RATIO_4*DEGREE_TO_RAD;
 	joint_states.effort[3]=I4;
 
 }
@@ -375,7 +381,7 @@ double Joystick::delta_position(double Theta_old, double Theta_new)
 	}
 	return dTheta;
 }
-void Joystick::update_position(vector<double> Theta_old, vector<double> Theta_new)
+void Joystick::update_position(vector<double> Theta_old, vector<double> Theta_new, double dT)
 {
 	dTheta1 = delta_position(Theta_old[0],Theta_new[0]);
 	dTheta2 = delta_position(Theta_old[1],Theta_new[1]);
@@ -391,6 +397,14 @@ void Joystick::update_position(vector<double> Theta_old, vector<double> Theta_ne
 	Position.push_back(Theta2);
 	Position.push_back(Theta3);
 	Position.push_back(Theta4);
+	Position.resize(4);
+
+	Velocity.clear();
+	Velocity.push_back(dTheta1/dT);
+	Velocity.push_back(dTheta2/dT);
+	Velocity.push_back(dTheta3/dT);
+	Velocity.push_back(dTheta4/dT);	
+	Velocity.resize(4);
 
 }
 void Joystick::current_setpoint(double i1,double i2, double i3, double i4)
@@ -424,9 +438,6 @@ int main(int argc, char **argv)
     ros::Subscriber Isetpoint_sub = n.subscribe("davinci_joystick/I_sp",1,&Joystick::JoystickCallback, &davinci_joystick);
     ros::Rate rate(FREQ);
 
-    double last_time = ros::Time::now().toNSec()/1000000000.0;
-    double current_time = ros::Time::now().toNSec()/1000000000.0;
-
     Port serial_port;
     serial_port.open_port();
     if (serial_port.port_handle == -1)
@@ -453,17 +464,21 @@ int main(int argc, char **argv)
 
     sleep(2);
 
-	davinci_joystick.current_setpoint(0,0,0,0);
+    double last_time = ros::Time::now().toSec();
+    double current_time = ros::Time::now().toSec();
+    double delta_time = current_time - last_time;
+    davinci_joystick.current_setpoint(0,0,0,0);
+
     while (ros::ok()) // Keep spinning loop until user presses Ctrl+C
     {
-    	current_time = ros::Time::now().toNSec()/1000000000.0;
-    	double delta_time = current_time - last_time;
+    	current_time = ros::Time::now().toSec();
+    	delta_time = current_time - last_time;
 
     	msg.send_message(davinci_joystick.I_setpoint);
     	msg.get_message();
     	if (msg.msg_found)
     	{
-    		davinci_joystick.update_position(msg_old.position,msg.position);
+    		davinci_joystick.update_position(msg_old.position,msg.position,delta_time);
     		davinci_joystick.update_current(msg.current);
     	}
 
@@ -474,7 +489,7 @@ int main(int argc, char **argv)
 
     	ros::spinOnce(); // Need to call this function often to allow ROS to process incoming messages
         rate.sleep(); // Sleep for the rest of the cycle, to enforce the loop rate
-        last_time = ros::Time::now().toNSec()/1000000000.0;
+        last_time = current_time;
     }
     davinci_joystick.current_setpoint(0,0,0,0);
     msg.send_message(davinci_joystick.I_setpoint);
