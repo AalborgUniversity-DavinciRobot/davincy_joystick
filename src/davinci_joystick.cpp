@@ -27,10 +27,11 @@ using namespace std;
 #define GEAR_RATIO_4 19.0			// Gear ratio motor 4
 
 #define IMAX_1 0.5
-#define IMAX_2 0.5
-#define IMAX_3 1.0
-#define IMAX_4 0.5
+#define IMAX_2 0.7
+#define IMAX_3 0.7
+#define IMAX_4 0.7
 #define BIT_PER_AMP 126.0
+#define OFFSET 0.06
 
 #define BIT_TO_CURRENT_MEASUREMENT 2.0/4095.0	// ratio to convert measured message into current [A] (12 bits, 2Amps max)
 #define BIT_TO_DEGREE_MEASUREMENT 360/2047.0	// ratio to convert measured message into position [degree] (11bits, 360degrees)
@@ -241,6 +242,7 @@ void Message::send_message(vector<double> I_sp)
 	 * 			S_i		->	direction of current (0,1)
 	 * 			I_i		->	Amplitude of current (0,IMAX_i)
 	 */
+
 	int S1,S2,S3,S4;
 	if (I_sp[0]<0.0) {S1=0; I_sp[0]*=-1;}
 	else {S1=1;}
@@ -250,9 +252,10 @@ void Message::send_message(vector<double> I_sp)
 	else {S3=0;}
 	if (I_sp[3]<0.0) {S4=0; I_sp[3]*=-1;}
 	else {S4=1;}
+	
+	
 
-
-	uint8_t message[]={0x00, S1*255, I_sp[0]*BIT_PER_AMP, S2*255, I_sp[1]*BIT_PER_AMP, S3*255, I_sp[2]*BIT_PER_AMP, S4*255, I_sp[3]*BIT_PER_AMP, 0xFF};
+	uint8_t message[]={0x00, S1*255, I_sp[0]*BIT_PER_AMP*2, S2*255, I_sp[1]*BIT_PER_AMP, S3*255, I_sp[2]*BIT_PER_AMP, S4*255, I_sp[3]*BIT_PER_AMP, 0xFF};
 
 	//uint8_t message[]={0x00, S1*255, 0, S2*255, 0, S3*255, 0, S4*255, 0, 0xFF};
 		/* bytes send {Byte_1, Byte_2, Byte_3, Byte_4, Byte_5, Byte_6, Byte_7, Byte_8, Byte_9, Byte_10}
@@ -556,10 +559,11 @@ int main(int argc, char **argv)
    	//davinci_joystick.callibration(msg);
     sleep(2);
 
+	davinci_joystick.current_setpoint(0,0,0,0);
     while (ros::ok()) // Keep spinning loop until user presses Ctrl+C
     {
 
-		msg.send_message(davinci_joystick.I_setpoint);
+	msg.send_message(davinci_joystick.I_setpoint);
     	msg.get_message();
     	if (msg.msg_found)
     	{
