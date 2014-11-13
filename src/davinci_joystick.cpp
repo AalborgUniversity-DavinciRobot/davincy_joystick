@@ -31,7 +31,7 @@ using namespace std;
 #define IMAX_3 0.7
 #define IMAX_4 0.7
 #define BIT_PER_AMP 126.0
-#define OFFSET 0.06
+
 
 #define BIT_TO_CURRENT_MEASUREMENT 2.0/4095.0	// ratio to convert measured message into current [A] (12 bits, 2Amps max)
 #define BIT_TO_DEGREE_MEASUREMENT 360/2047.0	// ratio to convert measured message into position [degree] (11bits, 360degrees)
@@ -253,7 +253,6 @@ void Message::send_message(vector<double> I_sp)
 	if (I_sp[3]<0.0) {S4=0; I_sp[3]*=-1;}
 	else {S4=1;}
 	
-	
 
 	uint8_t message[]={0x00, S1*255, I_sp[0]*BIT_PER_AMP*2, S2*255, I_sp[1]*BIT_PER_AMP, S3*255, I_sp[2]*BIT_PER_AMP, S4*255, I_sp[3]*BIT_PER_AMP, 0xFF};
 
@@ -297,10 +296,6 @@ public:
 
 
 private:
-	double I1_par[2];
-	double I2_par[2];
-	double I3_par[2];
-	double I4_par[2];
 	void limit_current(void);
 	double delta_position(double Theta_old, double Theta_new);
 
@@ -400,22 +395,12 @@ void Joystick::update_position(vector<double> Theta_old, vector<double> Theta_ne
 }
 void Joystick::current_setpoint(double i1,double i2, double i3, double i4)
 {
-
-	I1_par[0]=1.0;
-	I1_par[1]=0.0;
-	I2_par[0]=1.0;
-	I2_par[1]=0.0;
-	I3_par[0]=1.0;
-	I3_par[1]=0.0;
-	I4_par[0]=1.0;
-	I4_par[1]=0.0;
 	I_setpoint.clear();
 
-
-	I_setpoint.push_back((i1-I1_par[1])/I1_par[0]);
-	I_setpoint.push_back((i2-I2_par[1])/I2_par[0]);
-	I_setpoint.push_back((i3-I3_par[1])/I3_par[0]);
-	I_setpoint.push_back((i4-I4_par[1])/I4_par[0]);
+	I_setpoint.push_back(i1);
+	I_setpoint.push_back(i2);
+	I_setpoint.push_back(i3);
+	I_setpoint.push_back(i4);
 	limit_current();
 
 }
@@ -425,97 +410,7 @@ void Joystick::update_current(vector<double> I)
 	I2=I[1];
 	I3=I[2];
 	I4=I[3];
-
-	/*I1=(I[0]-I1_par[1])/I1_par[0];
-	I2=(I[1]-I2_par[1])/I2_par[0];
-	I3=(I[2]-I3_par[1])/I3_par[0];
-	I4=(I[3]-I4_par[1])/I4_par[0];*/
 }
-void Joystick::callibration(Message msg)
-{
-	I1_par[0]=1.0;
-	I1_par[1]=0.0;
-	I2_par[0]=1.0;
-	I2_par[1]=0.0;
-	I3_par[0]=1.0;
-	I3_par[1]=0.0;
-	I4_par[0]=1.0;
-	I4_par[1]=0.0;
-
-	const int iteration = 5;
-	const double steps = 20;
-
-	FILE * pFile;
-	char name[10];
-
-	for(int joint=1;joint<5;joint++)
-	{
-		sprintf(name,"joint_%d.txt",joint);
-		pFile = fopen(name,"w");
-
-		fprintf(pFile,"joint: %d\n",joint);
-		ROS_INFO("Callibrating joint %d\n",joint);
-		vector<double> x;
-		vector<double> y;
-		double SumX=0;
-		double SumY=0;
-		double SumXY=0;
-		double SumXX=0;
-		double mean_x;
-		double mean_y;
-		double slope =0;
-		double offset =0;
-
-		x.clear();
-		y.clear();
-		for (int j=0; j<iteration;j++)
-	    {
-			for (double cnt = 0;cnt<steps+1;cnt++)
-			{
-				double i_ = cnt*1.0/steps;
-
-				if (joint==1){ current_setpoint(i_,0,0,0);}
-				else if (joint==2){ current_setpoint(0,i_,0,0);}
-				else if (joint==3){ current_setpoint(0,0,i_,0);}
-				else if (joint==4){ current_setpoint(0,0,0,i_);}
-				msg.send_message(I_setpoint);
-				usleep(50000);
-				msg.get_message();
-				update_current(msg.current);
-
-				if (i_>=0.1 && i_<=0.7)
-				{
-					x.push_back(i_);
-					y.push_back(msg.current[joint-1]);
-				}
-			}
-			current_setpoint(0,0,0,0);
-			msg.send_message(I_setpoint);
-			sleep(1);
-       	}
-		for(int i=0;i<x.size();i++)
-		{
-			fprintf(pFile,"%lf\t%lf\n",x[i],y[i]);
-			SumX +=x[i];
-			SumY +=y[i];
-			SumXX += x[i]*x[i];
-			SumXY += x[i]*y[i];
-		}
-		mean_x = SumX/x.size();
-		mean_y = SumY/y.size();
-		slope = (SumXY-SumX*mean_y)/(SumXX - SumX*mean_x);
-		offset = (mean_y - slope*mean_x);
-		fprintf(pFile,"%lf\t%lf\n",slope,offset);
-       	printf("%lf\t%lf\n\n",slope,offset);
-
-       	if(joint==1){I1_par[0]=slope;I1_par[1]=offset;}
-       	else if(joint==2){I2_par[0]=slope;I2_par[1]=offset;}
-       	else if(joint==3){I3_par[0]=slope;I3_par[1]=offset;}
-       	else if(joint==4){I4_par[0]=slope;I4_par[1]=offset;}
-       	fclose(pFile);
-	}
-}
-
 
 
 int main(int argc, char **argv)
@@ -529,6 +424,8 @@ int main(int argc, char **argv)
     ros::Subscriber Isetpoint_sub = n.subscribe("davinci_joystick/I_sp",1,&Joystick::JoystickCallback, &davinci_joystick);
     ros::Rate rate(FREQ);
 
+    double last_time = ros::Time::now().toNSec()/1000000000.0;
+    double current_time = ros::Time::now().toNSec()/1000000000.0;
 
     Port serial_port;
     serial_port.open_port();
@@ -554,16 +451,15 @@ int main(int argc, char **argv)
     msg_init.print_message(msg_init.current);
     msg_old = msg_init;
 
-	
-
-   	//davinci_joystick.callibration(msg);
     sleep(2);
 
 	davinci_joystick.current_setpoint(0,0,0,0);
     while (ros::ok()) // Keep spinning loop until user presses Ctrl+C
     {
+    	current_time = ros::Time::now().toNSec()/1000000000.0;
+    	double delta_time = current_time - last_time;
 
-	msg.send_message(davinci_joystick.I_setpoint);
+    	msg.send_message(davinci_joystick.I_setpoint);
     	msg.get_message();
     	if (msg.msg_found)
     	{
@@ -571,15 +467,14 @@ int main(int argc, char **argv)
     		davinci_joystick.update_current(msg.current);
     	}
 
-
     	davinci_joystick.create_joint_state_msg();
-
 
     	joystick_pub.publish(davinci_joystick.joint_states);
     	msg_old = msg;
 
-        ros::spinOnce(); // Need to call this function often to allow ROS to process incoming messages
+    	ros::spinOnce(); // Need to call this function often to allow ROS to process incoming messages
         rate.sleep(); // Sleep for the rest of the cycle, to enforce the loop rate
+        last_time = ros::Time::now().toNSec()/1000000000.0;
     }
     davinci_joystick.current_setpoint(0,0,0,0);
     msg.send_message(davinci_joystick.I_setpoint);
