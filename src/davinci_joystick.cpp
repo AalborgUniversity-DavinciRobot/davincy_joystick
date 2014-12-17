@@ -19,7 +19,7 @@ using namespace std;
 // Define constants
 #define PORT "/dev/ttyUSB0"			// connected port
 #define BAUDRATE B230400			// Baud rate = 230400 bits/s
-#define FREQ 100					// Frequency at which node is running (190 Hz max, because we need to wait till buffer has enough bytes available (5ms)
+#define FREQ 100					// Frequency at which node is running (160 Hz max, because we need to wait till buffer has enough bytes available (6ms)
 #define M_PI 3.14159265358979323846	// PI
 #define GEAR_RATIO_1 5.1*2			// Gear ratio motor 1 only 256 steps, therefore *2
 #define GEAR_RATIO_2 19.0			// Gear ratio motor 2
@@ -128,14 +128,16 @@ bool Message::check_buffer(void)
 {
 	int bytes;
 	tcflush(port,TCIFLUSH);
-	usleep(8000);	// 5 milliseconds  (18Bytes @ 1kHz -> 5*18=90 bytes per 5 ms)
+	usleep(6000);	// 6 milliseconds  (18Bytes @ 1ms -> 6*18=108 bytes per 6 ms)
 	ioctl(port, FIONREAD, &bytes);	// get number of bytes available at port and store in bytes
-	if (bytes > 37)
+	//ROS_INFO(" %d \n",bytes);
+	if (bytes > 36)
 	{
 		return true;
 	}
 	else
 	{
+		ROS_INFO("NOT ENOUGH BYTES AVAILABLE AT PORT (%d)\n",bytes);
 		return false;
 	}
 }
@@ -165,14 +167,14 @@ void Message::get_message(void)
 	}
 	else
 	{
-		ROS_INFO("NOT ENOUGH BYTES AVAILABLE AT PORT\n");
 		//message.clear();
+		ROS_INFO("PROBLEMS\n");
 	}
 }
 vector<double> Message::process_message(int i,vector<uint8_t> msg_raw)
 {
 	vector<double> msg_;
-	msg_.push_back(hex_to_dec(msg_raw[i+1],msg_raw[i+2])*BIT_TO_CURRENT_MEASUREMENT);
+	msg_.push_back(hex_to_dec(msg_raw[i+1],msg_raw[i+2])*BIT_TO_CURRENT_MEASUREMENT/2);
 	msg_.push_back(hex_to_dec(msg_raw[i+3],msg_raw[i+4])*BIT_TO_DEGREE_MEASUREMENT);
 	msg_.push_back(hex_to_dec(msg_raw[i+5],msg_raw[i+6])*BIT_TO_CURRENT_MEASUREMENT);
 	msg_.push_back(hex_to_dec(msg_raw[i+7],msg_raw[i+8])*BIT_TO_DEGREE_MEASUREMENT);
@@ -231,7 +233,7 @@ void Message::print_message(vector<double> vec)
 {
 	for (int i=0;i<vec.size();i++)
 	{
-		printf("%lf\t",vec[2]);
+		printf("%lf\t",vec[i]);
 	}
 	printf("\n");
 }
@@ -243,6 +245,7 @@ void Message::send_message(vector<double> I_sp)
 	 * 			I_i		->	Amplitude of current (0,IMAX_i)
 	 */
 
+	
 	int S1,S2,S3,S4;
 	if (I_sp[0]<0.0) {S1=0; I_sp[0]*=-1;}
 	else {S1=1;}
@@ -254,7 +257,7 @@ void Message::send_message(vector<double> I_sp)
 	else {S4=1;}
 	
 
-	uint8_t message[]={0x00, S1*255, I_sp[0]*BIT_PER_AMP*2, S2*255, I_sp[1]*BIT_PER_AMP, S3*255, I_sp[2]*BIT_PER_AMP, S4*255, I_sp[3]*BIT_PER_AMP, 0xFF};
+	uint8_t message[]={0x00, S1*255, I_sp[0]*BIT_PER_AMP, S2*255, I_sp[1]*BIT_PER_AMP, S3*255, I_sp[2]*BIT_PER_AMP, S4*255, I_sp[3]*BIT_PER_AMP, 0xFF};
 
 	//uint8_t message[]={0x00, S1*255, 0, S2*255, 0, S3*255, 0, S4*255, 0, 0xFF};
 		/* bytes send {Byte_1, Byte_2, Byte_3, Byte_4, Byte_5, Byte_6, Byte_7, Byte_8, Byte_9, Byte_10}
@@ -365,7 +368,7 @@ void Joystick::create_joint_state_msg(void)
 }
 double Joystick::delta_position(double Theta_old, double Theta_new)
 {
-	double range=150.0;
+	double range=60.0;
 	double dTheta;
 	if (Theta_old>(360.0-range) && Theta_new<range)		// Position has overflown
 		{
@@ -467,25 +470,37 @@ int main(int argc, char **argv)
     double last_time = ros::Time::now().toSec();
     double current_time = ros::Time::now().toSec();
     double delta_time = current_time - last_time;
+    double start_time = current_time;
     davinci_joystick.current_setpoint(0,0,0,0);
 
+    int lost = 0;
+    int loop_count = 0;
     while (ros::ok()) // Keep spinning loop until user presses Ctrl+C
     {
+	loop_count++;
     	current_time = ros::Time::now().toSec();
-    	delta_time = current_time - last_time;
+    	
 
     	msg.send_message(davinci_joystick.I_setpoint);
     	msg.get_message();
     	if (msg.msg_found)
     	{
+		delta_time = current_time - last_time;
     		davinci_joystick.update_position(msg_old.position,msg.position,delta_time);
     		davinci_joystick.update_current(msg.current);
+    		davinci_joystick.create_joint_state_msg();
+    		msg_old = msg;
     	}
+	else
+	{
+		lost++; //amount of lost messages
+	}
+	if (loop_count % 1000 == 0)
+	{
+		printf("time: %lf msg: %d, lost: %d, perc: %lf \n",current_time-start_time,loop_count,lost,double(lost)/double(loop_count));	
+	}
 
-    	davinci_joystick.create_joint_state_msg();
-
-    	joystick_pub.publish(davinci_joystick.joint_states);
-    	msg_old = msg;
+	joystick_pub.publish(davinci_joystick.joint_states);
 
     	ros::spinOnce(); // Need to call this function often to allow ROS to process incoming messages
         rate.sleep(); // Sleep for the rest of the cycle, to enforce the loop rate
