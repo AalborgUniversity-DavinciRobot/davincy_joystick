@@ -4,7 +4,5 @@
 
 	<node name="davinci_joystick" pkg="davinci_joystick" type="davinci_joystick"/> 
 	<node name="robot_state_publisher" pkg="robot_state_publisher" type="state_publisher"/>
-	<node name="joystick_simulation" pkg="davinci_joystick" type="joystick_simulation"/>
-
 	<node name="rviz" pkg="rviz" type="rviz" args="-d $(find joystick_description)/urdf/joystick.rviz" required="true" />
 </launch>

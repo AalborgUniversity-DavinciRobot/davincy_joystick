@@ -344,10 +344,10 @@ void Joystick::limit_current(void)
 void Joystick::create_joint_state_msg(void)
 {
 	joint_states.header.stamp=ros::Time::now();
-	joint_states.position.resize(4);
-	joint_states.name.resize(4);
-	joint_states.effort.resize(4);
-	joint_states.velocity.resize(4);
+	joint_states.position.resize(5);
+	joint_states.name.resize(5);
+	joint_states.effort.resize(5);
+	joint_states.velocity.resize(5);
 	joint_states.name[0]="pinch";
 	joint_states.position[0]=-Theta1/GEAR_RATIO_1*DEGREE_TO_RAD;
 	joint_states.velocity[0]=Velocity[0]/GEAR_RATIO_1*DEGREE_TO_RAD;
@@ -364,6 +364,10 @@ void Joystick::create_joint_state_msg(void)
 	joint_states.position[3]=-Theta4/GEAR_RATIO_4*DEGREE_TO_RAD;
 	joint_states.velocity[3]=Velocity[3]/GEAR_RATIO_4*DEGREE_TO_RAD;
 	joint_states.effort[3]=I4;
+	joint_states.name[4]="pinch2";
+	joint_states.position[4]=Theta1/GEAR_RATIO_1*DEGREE_TO_RAD;
+	joint_states.velocity[4]=-Velocity[0]/GEAR_RATIO_1*DEGREE_TO_RAD;
+	joint_states.effort[4]=I1;
 
 }
 double Joystick::delta_position(double Theta_old, double Theta_new)
@@ -438,6 +442,7 @@ int main(int argc, char **argv)
     ros::init(argc, argv, "joystick_get_state");
     ros::NodeHandle n;
     ros::Publisher joystick_pub = n.advertise<sensor_msgs::JointState>("davinci_joystick/joint_states",1);
+    ros::Publisher joystick_pub_sim = n.advertise<sensor_msgs::JointState>("joint_states",1);
     ros::Subscriber Isetpoint_sub = n.subscribe("davinci_joystick/I_sp",1,&Joystick::JoystickCallback, &davinci_joystick);
     ros::Rate rate(FREQ);
 
@@ -501,6 +506,7 @@ int main(int argc, char **argv)
 	}
 
 	joystick_pub.publish(davinci_joystick.joint_states);
+	joystick_pub_sim.publish(davinci_joystick.joint_states);
 
     	ros::spinOnce(); // Need to call this function often to allow ROS to process incoming messages
         rate.sleep(); // Sleep for the rest of the cycle, to enforce the loop rate
