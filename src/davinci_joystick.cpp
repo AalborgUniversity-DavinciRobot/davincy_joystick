@@ -26,11 +26,11 @@ using namespace std;
 #define GEAR_RATIO_3 4.4			// Gear ratio motor 3
 #define GEAR_RATIO_4 19.0			// Gear ratio motor 4
 
-#define IMAX_1 0.5
-#define IMAX_2 0.7
-#define IMAX_3 0.7
-#define IMAX_4 0.7
-#define BIT_PER_AMP 126.0
+#define IMAX_1 0.6
+#define IMAX_2 0.5
+#define IMAX_3 0.5
+#define IMAX_4 0.5
+#define BIT_PER_AMP 142.0
 
 
 #define BIT_TO_CURRENT_MEASUREMENT 2.0/4095.0	// ratio to convert measured message into current [A] (12 bits, 2Amps max)
@@ -168,13 +168,12 @@ void Message::get_message(void)
 	else
 	{
 		//message.clear();
-		ROS_INFO("PROBLEMS\n");
 	}
 }
 vector<double> Message::process_message(int i,vector<uint8_t> msg_raw)
 {
 	vector<double> msg_;
-	msg_.push_back(hex_to_dec(msg_raw[i+1],msg_raw[i+2])*BIT_TO_CURRENT_MEASUREMENT/2);
+	msg_.push_back(hex_to_dec(msg_raw[i+1],msg_raw[i+2])*BIT_TO_CURRENT_MEASUREMENT);
 	msg_.push_back(hex_to_dec(msg_raw[i+3],msg_raw[i+4])*BIT_TO_DEGREE_MEASUREMENT);
 	msg_.push_back(hex_to_dec(msg_raw[i+5],msg_raw[i+6])*BIT_TO_CURRENT_MEASUREMENT);
 	msg_.push_back(hex_to_dec(msg_raw[i+7],msg_raw[i+8])*BIT_TO_DEGREE_MEASUREMENT);
@@ -257,7 +256,7 @@ void Message::send_message(vector<double> I_sp)
 	else {S4=1;}
 	
 
-	uint8_t message[]={0x00, S1*255, I_sp[0]*BIT_PER_AMP, S2*255, I_sp[1]*BIT_PER_AMP, S3*255, I_sp[2]*BIT_PER_AMP, S4*255, I_sp[3]*BIT_PER_AMP, 0xFF};
+	uint8_t message[]={0x00, S1*255, I_sp[0]*BIT_PER_AMP*2, S2*255, I_sp[1]*BIT_PER_AMP, S3*255, I_sp[2]*BIT_PER_AMP, S4*255, I_sp[3]*BIT_PER_AMP, 0xFF};
 
 	//uint8_t message[]={0x00, S1*255, 0, S2*255, 0, S3*255, 0, S4*255, 0, 0xFF};
 		/* bytes send {Byte_1, Byte_2, Byte_3, Byte_4, Byte_5, Byte_6, Byte_7, Byte_8, Byte_9, Byte_10}
@@ -500,10 +499,10 @@ int main(int argc, char **argv)
 	{
 		lost++; //amount of lost messages
 	}
-	if (loop_count % 1000 == 0)
+	/*if (loop_count % 1000 == 0)
 	{
 		printf("time: %lf msg: %d, lost: %d, perc: %lf \n",current_time-start_time,loop_count,lost,double(lost)/double(loop_count));	
-	}
+	}*/
 
 	joystick_pub.publish(davinci_joystick.joint_states);
 	joystick_pub_sim.publish(davinci_joystick.joint_states);
